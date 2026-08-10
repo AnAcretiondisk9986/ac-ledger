@@ -3,7 +3,7 @@
  * - 开发模式：加载 @ac-ledger/web 的 vite dev server（http://localhost:5173）
  * - 生产模式：加载本地 renderer/index.html（file://，应用使用 HashRouter 无需服务器）
  */
-const { app, BrowserWindow, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, net } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const { registerFsIpc } = require('./fs-ipc.cjs');
@@ -33,6 +33,37 @@ function registerShellIpc() {
       throw new Error(`拒绝打开非 http(s) 链接: ${url}`);
     }
     await shell.openExternal(url);
+  });
+}
+
+/**
+ * GitHub 设备流 IPC：请求改走主进程（net.fetch 走 Chromium 网络栈）。
+ * 原因：github.com/login/device/* 端点不返回 CORS 头，渲染进程 fetch 必然被拦截。
+ */
+async function devicePost(url, body) {
+  const res = await net.fetch(url, {
+    method: 'POST',
+    headers: { Accept: 'application/json' },
+    body: new URLSearchParams(body),
+  });
+  if (!res.ok) throw new Error(`GitHub 请求失败（HTTP ${res.status}）`);
+  return res.json();
+}
+
+function registerDeviceFlowIpc() {
+  ipcMain.handle('ac-ledger:device-flow:code', async (_e, clientId, scope) => {
+    if (typeof clientId !== 'string' || !clientId) throw new Error('client_id 无效');
+    return devicePost('https://github.com/login/device/code', { client_id: clientId, scope: scope || 'repo' });
+  });
+  ipcMain.handle('ac-ledger:device-flow:token', async (_e, clientId, deviceCode) => {
+    if (typeof clientId !== 'string' || typeof deviceCode !== 'string') {
+      throw new Error('参数无效');
+    }
+    return devicePost('https://github.com/login/oauth/access_token', {
+      client_id: clientId,
+      device_code: deviceCode,
+      grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
+    });
   });
 }
 
@@ -180,6 +211,7 @@ if (!gotLock) {
   app.whenReady().then(() => {
     registerFsIpc();
     registerShellIpc();
+    registerDeviceFlowIpc();
     createWindow();
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();

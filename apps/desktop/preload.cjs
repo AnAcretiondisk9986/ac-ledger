@@ -16,6 +16,11 @@ contextBridge.exposeInMainWorld('acLedgerDesktop', {
   isDesktop: true,
   /** 用系统默认浏览器打开外部链接（主进程校验协议后执行） */
   openExternal: (url) => invoke('ac-ledger:shell:open-external', url),
+  /** GitHub 设备流（主进程转发，规避 github.com 无 CORS 头导致渲染进程 fetch 被拦截） */
+  deviceFlow: {
+    requestDeviceCode: (clientId, scope) => invoke('ac-ledger:device-flow:code', clientId, scope),
+    pollAccessToken: (clientId, deviceCode) => invoke('ac-ledger:device-flow:token', clientId, deviceCode),
+  },
   /** 本地文件存储（对应 FileSystemOps 接口，路径为数据目录内相对路径） */
   storage: {
     rootDir: () => invoke('ac-ledger:fs:root'),

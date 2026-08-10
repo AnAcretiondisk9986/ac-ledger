@@ -9,6 +9,11 @@ declare global {
       isDesktop: boolean;
       /** 用系统默认浏览器打开外部链接 */
       openExternal(url: string): Promise<void>;
+      /** GitHub 设备流（主进程转发，规避 CORS 限制） */
+      deviceFlow?: {
+        requestDeviceCode(clientId: string, scope?: string): Promise<unknown>;
+        pollAccessToken(clientId: string, deviceCode: string): Promise<unknown>;
+      };
       /** 本地存储 IPC 桥（FileSystemOps + 数据目录查询） */
       storage: FileSystemOps & { rootDir(): Promise<string> };
     };

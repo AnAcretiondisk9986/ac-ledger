@@ -31,7 +31,20 @@ export type DeviceFlowPollResult =
   | { status: 'expired' }
   | { status: 'denied' };
 
+/**
+ * 提交表单请求。
+ * 桌面版：优先走主进程 IPC（net.fetch）——github.com 设备流端点无 CORS 头，
+ * 渲染进程直接 fetch 必然被浏览器拦截（"Failed to fetch"）。
+ * Web 版：fallback 到浏览器 fetch（受 GitHub CORS 限制，可能失败）。
+ */
 async function postForm(url: string, body: Record<string, string>): Promise<Record<string, unknown>> {
+  const bridge = typeof window !== 'undefined' ? window.acLedgerDesktop?.deviceFlow : undefined;
+  if (bridge) {
+    if (url === DEVICE_CODE_URL) {
+      return (await bridge.requestDeviceCode(body.client_id ?? '', body.scope)) as Record<string, unknown>;
+    }
+    return (await bridge.pollAccessToken(body.client_id ?? '', body.device_code ?? '')) as Record<string, unknown>;
+  }
   const res = await fetch(url, {
     method: 'POST',
     headers: { Accept: 'application/json' },
