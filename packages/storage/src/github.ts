@@ -190,6 +190,27 @@ export class GitHubAdapter implements StorageAdapter {
       }));
   }
 
+  /** 最近提交的文件时间表（数据目录相对路径 → 最后提交时间 ms），用于本地↔远端版本对比 */
+  async getCommitDates(perPage = 50): Promise<Map<string, number>> {
+    if (this.branchExists === false) return new Map();
+    const { data } = await this.request<
+      { commit: { committer: { date: string } }; files?: { filename: string }[] }[]
+    >(
+      'GET',
+      `${API}/repos/${this.config.owner}/${this.config.repo}/commits?sha=${encodeURIComponent(this.branch)}&per_page=${perPage}`
+    );
+    const base = this.config.basePath?.replace(/\\/g, '/').replace(/\/+$/, '') ?? '';
+    const map = new Map<string, number>();
+    for (const c of data) {
+      const t = Date.parse(c.commit.committer.date);
+      for (const f of c.files ?? []) {
+        const rel = base && f.filename.startsWith(base + '/') ? f.filename.slice(base.length + 1) : f.filename;
+        if (!map.has(rel)) map.set(rel, t);
+      }
+    }
+    return map;
+  }
+
   async deleteFile(path: string, opts?: WriteOptions): Promise<void> {
     if (this.branchExists === false) return;
     const p = this.fullPath(path);

@@ -26,11 +26,11 @@ export const nodeFileSystemOps: FileSystemOps = {
   },
   async listFiles(absDir) {
     const entries = await fsp.readdir(absDir, { withFileTypes: true });
-    const result: { name: string; size?: number }[] = [];
+    const result: { name: string; size?: number; mtimeMs?: number }[] = [];
     for (const e of entries) {
       if (!e.isFile()) continue;
       const stat = await fsp.stat(path.join(absDir, e.name));
-      result.push({ name: e.name, size: stat.size });
+      result.push({ name: e.name, size: stat.size, mtimeMs: stat.mtimeMs });
     }
     return result;
   },

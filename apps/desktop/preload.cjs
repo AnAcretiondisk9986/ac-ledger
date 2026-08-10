@@ -36,6 +36,24 @@ contextBridge.exposeInMainWorld('acLedgerDesktop', {
       return () => ipcRenderer.removeListener('ac-ledger:win:maximized-changed', listener);
     },
   },
+  /** GitHub 双线存储：本地缓存目录（按 slug 隔离在 userData/ledger-cache 下） */
+  cacheStorage: {
+    rootDir: (slug) => invoke('ac-ledger:fs-cache:root', slug),
+    readFile: (slug, rel) => invoke('ac-ledger:fs-cache:read', slug, rel),
+    writeFile: (slug, rel, content) => invoke('ac-ledger:fs-cache:write', slug, rel, content),
+    listFiles: (slug, rel) => invoke('ac-ledger:fs-cache:list', slug, rel),
+    deleteFile: (slug, rel) => invoke('ac-ledger:fs-cache:delete', slug, rel),
+  },
+  /** 退出同步：启用开关 + 关闭前回调 + 上报结果 */
+  sync: {
+    enable: (enabled) => invoke('ac-ledger:sync:enable', enabled),
+    onBeforeQuit: (cb) => {
+      const listener = () => cb();
+      ipcRenderer.on('ac-ledger:sync:before-quit', listener);
+      return () => ipcRenderer.removeListener('ac-ledger:sync:before-quit', listener);
+    },
+    result: (ok, error) => invoke('ac-ledger:sync:result', ok, error),
+  },
   /** 本地文件存储（对应 FileSystemOps 接口，路径为数据目录内相对路径） */
   storage: {
     rootDir: () => invoke('ac-ledger:fs:root'),

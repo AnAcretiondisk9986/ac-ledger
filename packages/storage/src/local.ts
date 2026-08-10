@@ -43,12 +43,13 @@ export class LocalAdapter implements StorageAdapter {
     await this.ops.writeFile(this.resolve(path), content);
   }
 
-  async listFiles(prefix = ''): Promise<{ path: string; sha?: string; size?: number }[]> {
+  async listFiles(prefix = ''): Promise<{ path: string; sha?: string; size?: number; mtimeMs?: number }[]> {
     const dir = this.resolve(prefix || '.');
     const items = await this.ops.listFiles(dir);
     return items.map((f) => ({
       path: f.name,
       size: f.size,
+      mtimeMs: f.mtimeMs,
       // 无版本概念；用 size+mtime 不参与乐观锁，本地单进程写入无需冲突控制
     }));
   }

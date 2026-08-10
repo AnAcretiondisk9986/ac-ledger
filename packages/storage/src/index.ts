@@ -5,3 +5,5 @@ export * from './webdav.js';
 export * from './webdav-desktop.js';
 export * from './memory.js';
 export * from './repository.js';
+export * from './sync.js';
+export * from './blob-sha.js';

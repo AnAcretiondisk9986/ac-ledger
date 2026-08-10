@@ -12,11 +12,12 @@ import {
   DesktopWebDAVAdapter,
   GitHubAdapter,
   LedgerRepository,
+  LedgerSync,
   StorageAdapter,
   StorageError,
   WebDAVAdapter,
 } from '@ac-ledger/storage';
-import { LocalAdapter } from '@ac-ledger/storage/local';
+import { FileSystemOps, LocalAdapter } from '@ac-ledger/storage/local';
 import { ensureLedgerRepo, fetchGithubUser } from './github-oauth';
 
 export type StorageKind = 'github' | 'webdav' | 'local';
@@ -115,6 +116,8 @@ interface AppState {
   months: string[];
   /** 自动分类自定义规则（存于 settings.json） */
   autoRules: AutoCategoryRules;
+  /** 桌面版 GitHub 双线存储同步器（连接后可用，退出时 pushAll） */
+  githubSync: LedgerSync | null;
 
   /** 用配置连接并初始化账本 */
   connect(config: StorageConfig): Promise<void>;
@@ -149,6 +152,7 @@ export const useStore = create<AppState>((set, get) => ({
   transactions: [],
   months: [],
   autoRules: {},
+  githubSync: null,
 
   async connect(config) {
     const attempt = ++connectionAttempt;
@@ -160,6 +164,67 @@ export const useStore = create<AppState>((set, get) => ({
         const root = await window.acLedgerDesktop?.storage.rootDir();
         effective = { kind: 'local', rootDir: root ?? config.rootDir };
       }
+
+      // —— 桌面版 GitHub 模式：双线存储（本地缓存为工作副本，退出时提交远端） ——
+      if (config.kind === 'github' && typeof window !== 'undefined' && window.acLedgerDesktop?.cacheStorage) {
+        const remote = new GitHubAdapter({
+          owner: config.owner,
+          repo: config.repo,
+          token: config.token,
+          branch: config.branch || undefined,
+          basePath: config.basePath ?? '',
+        });
+        await remote.testConnection();
+        const slug = `${config.owner}-${config.repo}`;
+        const cache = window.acLedgerDesktop.cacheStorage;
+        const cacheRoot = await cache.rootDir(slug);
+        const ops: FileSystemOps = {
+          readFile: (p) => cache.readFile(slug, p),
+          writeFile: (p, c) => cache.writeFile(slug, p, c),
+          listFiles: (d) => cache.listFiles(slug, d),
+          deleteFile: (p) => cache.deleteFile(slug, p),
+          testConnection: async () => {},
+        };
+        const local = new LocalAdapter({ rootDir: cacheRoot, ops });
+        // 打开时双向同步：本地领先补交 / 远端领先拉取 / 交易并集 / 配置取新；失败不阻塞，以本地副本运行
+        let sync = new LedgerSync(remote, local);
+        try {
+          const remoteDates = await remote.getCommitDates();
+          sync = new LedgerSync(remote, local, remoteDates);
+          const result = await sync.syncAll();
+          console.info('[sync] 启动同步完成:', result);
+        } catch (e) {
+          console.warn('[sync] 启动同步失败，以本地副本运行（退出时将重试提交）:', e);
+        }
+        const repo = new LedgerRepository(local);
+        await repo.initLedger({ name: '我的账本' });
+        const [ledger, accounts, categories, transactions, months, settings] = await Promise.all([
+          repo.getLedger(),
+          repo.getAccounts(),
+          repo.getCategories(),
+          repo.getTransactions(),
+          repo.listMonths(),
+          repo.getSettings(),
+        ]);
+        if (attempt !== connectionAttempt) return;
+        saveConfig(effective);
+        await window.acLedgerDesktop.sync?.enable(true);
+        set({
+          config: effective,
+          repo,
+          ledger,
+          accounts,
+          categories,
+          transactions,
+          months,
+          autoRules: settings?.autoCategoryRules ?? {},
+          githubSync: sync,
+          status: 'ready',
+          error: null,
+        });
+        return;
+      }
+
       const adapter = createAdapter(effective);
       await adapter.testConnection();
       const repo = new LedgerRepository(adapter);
@@ -183,6 +248,7 @@ export const useStore = create<AppState>((set, get) => ({
         transactions,
         months,
         autoRules: settings?.autoCategoryRules ?? {},
+        githubSync: null,
         status: 'ready',
         error: null,
       });
@@ -216,6 +282,7 @@ export const useStore = create<AppState>((set, get) => ({
   disconnect() {
     connectionAttempt++;
     saveConfig(null);
+    void window.acLedgerDesktop?.sync?.enable(false);
     set({
       status: 'unconfigured',
       error: null,
@@ -227,6 +294,7 @@ export const useStore = create<AppState>((set, get) => ({
       transactions: [],
       months: [],
       autoRules: {},
+      githubSync: null,
     });
   },
 
@@ -336,4 +404,33 @@ export async function autoConnect(): Promise<void> {
     }
   })();
   return autoConnectPromise;
+}
+
+// 桌面版：关闭窗口前自动提交 GitHub（主进程拦截 close 后回调这里；成功才退出，失败弹窗三选）
+if (typeof window !== 'undefined' && window.acLedgerDesktop?.sync) {
+  window.acLedgerDesktop.sync.onBeforeQuit(() => {
+    const { githubSync } = useStore.getState();
+    void (async () => {
+      try {
+        if (!githubSync) {
+          await window.acLedgerDesktop?.sync?.result(true);
+          return;
+        }
+        const result = await githubSync.pushAll();
+        if (result.failed.length > 0) {
+          const first = result.failed[0];
+          throw new Error(
+            `同步失败 ${result.failed.length} 个文件${first ? `（如 ${first.path}: ${first.error}）` : ''}`
+          );
+        }
+        await window.acLedgerDesktop?.sync?.result(true);
+      } catch (e) {
+        try {
+          await window.acLedgerDesktop?.sync?.result(false, e instanceof Error ? e.message : String(e));
+        } catch {
+          // 主进程已退出等场景，忽略上报失败
+        }
+      }
+    })();
+  });
 }

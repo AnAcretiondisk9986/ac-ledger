@@ -34,9 +34,14 @@ function getRootDir() {
   return loadSelectedRoot() || path.join(app.getPath('userData'), 'ledger-data');
 }
 
+/** GitHub 双线存储的本地缓存根：userData/ledger-cache/<slug>（slug 按仓库隔离） */
+function cacheRootFor(slug) {
+  const safe = String(slug).replace(/[^a-zA-Z0-9._-]/g, '_');
+  return path.join(app.getPath('userData'), 'ledger-cache', safe);
+}
+
 /** 校验相对/绝对路径并保证它位于 rootDir 内 */
-function resolveSafe(rel) {
-  const root = path.resolve(getRootDir());
+function resolveSafeUnder(root, rel) {
   if (typeof rel !== 'string' || !rel) throw new Error('非法路径');
   const abs = path.isAbsolute(rel)
     ? path.resolve(rel)
@@ -63,7 +68,7 @@ function registerFsIpc() {
 
   ipcMain.handle('ac-ledger:fs:read', async (_e, rel) => {
     try {
-      return await fsp.readFile(resolveSafe(rel), 'utf8');
+      return await fsp.readFile(resolveSafeUnder(getRootDir(), rel), 'utf8');
     } catch (err) {
       if (err.code === 'ENOENT') return null;
       throw err;
@@ -71,41 +76,81 @@ function registerFsIpc() {
   });
 
   ipcMain.handle('ac-ledger:fs:write', async (_e, rel, content) => {
-    const abs = resolveSafe(rel);
+    const abs = resolveSafeUnder(getRootDir(), rel);
     await fsp.mkdir(path.dirname(abs), { recursive: true });
     await fsp.writeFile(abs, content, 'utf8');
   });
 
   ipcMain.handle('ac-ledger:fs:list', async (_e, rel) => {
-    const abs = resolveSafe(rel || '.');
-    const entries = await fsp.readdir(abs, { withFileTypes: true }).catch((err) => {
-      if (err.code === 'ENOENT') return [];
-      throw err;
-    });
-    const result = [];
-    for (const e of entries) {
-      if (!e.isFile()) continue;
-      const stat = await fsp.stat(path.join(abs, e.name));
-      result.push({ name: e.name, size: stat.size });
-    }
-    return result;
+    const abs = resolveSafeUnder(getRootDir(), rel || '.');
+    return listDir(abs);
   });
 
   ipcMain.handle('ac-ledger:fs:delete', async (_e, rel) => {
     try {
-      await fsp.unlink(resolveSafe(rel));
+      await fsp.unlink(resolveSafeUnder(getRootDir(), rel));
     } catch (err) {
       if (err.code === 'ENOENT') return;
       throw err;
     }
   });
 
-  ipcMain.handle('ac-ledger:fs:test', async (_e, absDir) => {
+  ipcMain.handle('ac-ledger:fs:test', async (_e, rel) => {
     const root = getRootDir();
-    const target = absDir ? resolveSafe(absDir) : root;
+    const target = rel ? resolveSafeUnder(root, rel) : root;
     await fsp.mkdir(target, { recursive: true });
     await fsp.access(target, fs.constants.R_OK | fs.constants.W_OK);
   });
+
+  // —— GitHub 双线存储：本地缓存目录桥（按 slug 隔离，仅缓存读写，无删除外暴露） ——
+  ipcMain.handle('ac-ledger:fs-cache:root', async (_e, slug) => {
+    const root = cacheRootFor(slug);
+    await fsp.mkdir(root, { recursive: true });
+    return root;
+  });
+
+  ipcMain.handle('ac-ledger:fs-cache:read', async (_e, slug, rel) => {
+    try {
+      return await fsp.readFile(resolveSafeUnder(cacheRootFor(slug), rel), 'utf8');
+    } catch (err) {
+      if (err.code === 'ENOENT') return null;
+      throw err;
+    }
+  });
+
+  ipcMain.handle('ac-ledger:fs-cache:write', async (_e, slug, rel, content) => {
+    const abs = resolveSafeUnder(cacheRootFor(slug), rel);
+    await fsp.mkdir(path.dirname(abs), { recursive: true });
+    await fsp.writeFile(abs, content, 'utf8');
+  });
+
+  ipcMain.handle('ac-ledger:fs-cache:list', async (_e, slug, rel) => {
+    return listDir(resolveSafeUnder(cacheRootFor(slug), rel || '.'));
+  });
+
+  ipcMain.handle('ac-ledger:fs-cache:delete', async (_e, slug, rel) => {
+    try {
+      await fsp.unlink(resolveSafeUnder(cacheRootFor(slug), rel));
+    } catch (err) {
+      if (err.code === 'ENOENT') return;
+      throw err;
+    }
+  });
+}
+
+/** 列出目录内文件（含 mtimeMs） */
+async function listDir(abs) {
+  const entries = await fsp.readdir(abs, { withFileTypes: true }).catch((err) => {
+    if (err.code === 'ENOENT') return [];
+    throw err;
+  });
+  const result = [];
+  for (const e of entries) {
+    if (!e.isFile()) continue;
+    const stat = await fsp.stat(path.join(abs, e.name));
+    result.push({ name: e.name, size: stat.size, mtimeMs: stat.mtimeMs });
+  }
+  return result;
 }
 
 module.exports = { registerFsIpc, getRootDir };

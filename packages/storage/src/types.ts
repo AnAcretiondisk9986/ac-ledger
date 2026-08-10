@@ -10,6 +10,8 @@ export interface FileInfo {
   /** 后端提供的版本标识（如 GitHub 的 blob sha），写回时用于乐观锁 */
   sha?: string;
   size?: number;
+  /** 最后修改时间（本地后端用，版本对比） */
+  mtimeMs?: number;
   updatedAt?: string;
 }
 

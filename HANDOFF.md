@@ -257,6 +257,15 @@ ELECTRON_BUILDER_BINARIES_MIRROR="https://npmmirror.com/mirrors/electron-builder
 - `store.ts`：`addTransactions`/`updateTransaction`/`removeTransaction`/`autoCategorizeUncategorized` 改为**内存合并**（按 id/refId 去重、月份列表收窄），保存后不再全量刷新；编辑/删除/补分类的网络开销从 ~19 个请求降到 1-2 个。
 - `github.ts`：新增文件 sha 缓存（GET 时记录、PUT 成功用响应更新、冲突/404 清除），写前免查询；同一文件的「读→写」连续操作（如 mergeMonth）从 2 个请求降为 1 个。github.test.ts 新增缓存命中测试（全量 58 项测试）。
 
+### 双线存储（本地工作副本 + GitHub 仓库，仅桌面版）
+
+- **写路径**：桌面版 GitHub 模式连接后，`LedgerRepository` 指向本地缓存目录（`userData/ledger-cache/<owner>-<repo>/`），操作只写本地（快、离线可用）；GitHub 只在「打开时同步」与「退出时提交」两个时机访问。
+- **打开时 `syncAll()`**（`packages/storage/src/sync.ts` 新增 `LedgerSync`）：双向对比（本地 blob sha vs 远端 tree sha，`blobSha()` 与 GitHub blob sha 语义一致）——本地领先→补交上传；远端领先（其他端更改）→拉取下载；交易文件按月**并集合并**（id/refId 去重，写两端）；ledger/accounts/categories/settings 等配置**取较新**（远端 commit 时间 vs 本地 mtime）。同步失败不阻塞启动，以本地副本运行，退出时重试。
+- **退出时 `pushAll()`**：主进程拦截 `close`（`sync.enable(true)` 后生效）→ 渲染进程执行 pushAll → 成功 `app.exit(0)`；失败弹窗三选：**重试 / 仍然退出（本地副本保留，下次打开自动补交）/ 取消**；30 秒超时兜底。
+- **基础设施**：`github.ts` 新增 `getCommitDates()`（commits API 一次拿 path→时间）；`fs-ipc.cjs` 新增 `ac-ledger:fs-cache:*` 桥（slug 隔离、路径校验）+ list 返回 `mtimeMs`；`FileInfo`/`FileSystemOps`/`MemoryAdapter` 增加 mtimeMs；preload/`desktop.d.ts` 新增 `cacheStorage` 与 `sync` 桥；`store.ts` 新增 `githubSync` state 与退出监听。
+- Web 版保持实时直连 GitHub（浏览器无本地目录）；WebDAV/本地模式不受影响。
+- 测试：`sync.test.ts` 7 个用例（推送/拉取/并集/取新/一致跳过），全量 **66 项测试**。
+
 ---
 
 ## 10. 交接给 GPT 时的建议开场

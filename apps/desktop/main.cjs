@@ -3,7 +3,7 @@
  * - 开发模式：加载 @ac-ledger/web 的 vite dev server（http://localhost:5173）
  * - 生产模式：加载本地 renderer/index.html（file://，应用使用 HashRouter 无需服务器）
  */
-const { app, BrowserWindow, ipcMain, shell, net, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, net, Menu, dialog } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const { registerFsIpc } = require('./fs-ipc.cjs');
@@ -84,6 +84,74 @@ function registerWindowIpc() {
 
 let mainWindow = null;
 
+// —— GitHub 双线存储：退出时自动提交（渲染进程执行同步，主进程拦截 close 并等待结果） ——
+let syncEnabled = false; // 渲染进程告知当前是否需要退出同步（仅桌面版 GitHub 模式为 true）
+let syncInFlight = false;
+let syncTimeout = null;
+
+function registerSyncIpc() {
+  ipcMain.handle('ac-ledger:sync:enable', (_e, enabled) => {
+    syncEnabled = !!enabled;
+    log(`sync: enabled=${syncEnabled}`);
+  });
+
+  ipcMain.handle('ac-ledger:sync:result', async (_e, ok, error) => {
+    clearTimeout(syncTimeout);
+    syncTimeout = null;
+    syncInFlight = false;
+    if (ok) {
+      log('sync: committed, exiting');
+      app.exit(0); // 直接退出，避免再次触发 close 拦截
+      return;
+    }
+    await showSyncError(String(error ?? '未知错误'));
+  });
+}
+
+/** 渲染进程提交失败/超时：弹窗提供 重试 / 强制退出 / 取消 */
+async function showSyncError(detail) {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    app.exit(1);
+    return;
+  }
+  const { response } = await dialog.showMessageBox(mainWindow, {
+    type: 'error',
+    title: '提交失败',
+    message: '更改未能提交到 GitHub 仓库',
+    detail: `${detail}\n\n（本地副本已保存，仍可安全退出，下次打开会自动重新提交）`,
+    buttons: ['重试', '仍然退出（下次打开自动补交）', '取消'],
+    defaultId: 0,
+    cancelId: 2,
+    noLink: true,
+  });
+  if (response === 0) {
+    // 重试：重新发起同步
+    syncInFlight = true;
+    mainWindow.webContents.send('ac-ledger:sync:before-quit');
+    armSyncTimeout();
+  } else if (response === 1) {
+    app.exit(0); // 强制退出：本地副本保留，下次打开时 syncAll 会补交
+  }
+  // response === 2：取消退出，窗口保持
+}
+
+function armSyncTimeout() {
+  clearTimeout(syncTimeout);
+  syncTimeout = setTimeout(() => {
+    syncInFlight = false;
+    syncTimeout = null;
+    void showSyncError('同步超时（渲染进程未响应）');
+  }, 30000);
+}
+
+function beginQuitSync(win) {
+  if (syncInFlight) return;
+  syncInFlight = true;
+  log('sync: before-quit requested');
+  win.webContents.send('ac-ledger:sync:before-quit');
+  armSyncTimeout();
+}
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1280,
@@ -113,8 +181,14 @@ function createWindow() {
   // 禁用页面缩放（Ctrl+滚轮 / 触控板捏合），保持桌面应用观感
   win.webContents.setVisualZoomLevelLimits(1, 1);
 
-  // 点击窗口关闭按钮（ControlBox X）→ 彻底退出应用（含所有子进程），不留后台残留
-  win.on('close', () => {
+  // 点击窗口关闭按钮（ControlBox X）→ 需要退出同步时先提交，成功后才真正退出
+  win.on('close', (e) => {
+    log('window close: checking sync');
+    if (syncEnabled && !syncInFlight) {
+      e.preventDefault();
+      beginQuitSync(win);
+      return;
+    }
     log('window close: quitting app');
     app.quit();
   });
@@ -253,6 +327,7 @@ if (!gotLock) {
     registerShellIpc();
     registerDeviceFlowIpc();
     registerWindowIpc();
+    registerSyncIpc();
     createWindow();
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
