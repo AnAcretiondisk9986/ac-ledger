@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react';
-import { Card, Row, Col, Statistic, Select, Empty, Table, Typography } from 'antd';
+import { Card, Row, Col, Statistic, Select, Empty, Table, Typography, DatePicker, Space } from 'antd';
+import type { Dayjs } from 'dayjs';
+import dayjs from 'dayjs';
 import {
   BarChart,
   Bar,
@@ -25,59 +27,110 @@ import {
 } from '@ac-ledger/core';
 import { useStore } from '../store';
 
+const { RangePicker } = DatePicker;
+
 const PIE_COLORS = ['#1677ff', '#52c41a', '#faad14', '#f5222d', '#722ed1', '#13c2c2', '#eb2f96', '#fa8c16', '#a0d911'];
+
+/** 交易日期（YYYY-MM-DD）是否在范围内；范围为空表示全部 */
+function inRange(date: string, range: [Dayjs, Dayjs] | null): boolean {
+  if (!range) return true;
+  const d = date.slice(0, 10);
+  return d >= range[0].format('YYYY-MM-DD') && d <= range[1].format('YYYY-MM-DD');
+}
 
 export default function StatsPage() {
   const transactions = useStore((s) => s.transactions);
   const categories = useStore((s) => s.categories);
   const months = useStore((s) => s.months);
 
+  // —— 全局日期范围筛选（空 = 全部账单） ——
+  const [range, setRange] = useState<[Dayjs, Dayjs] | null>(null);
+
+  const rangeTx = useMemo(
+    () => transactions.filter((t) => inRange(t.date, range)),
+    [transactions, range]
+  );
+  const rangeLabel = range
+    ? `${range[0].format('YYYY-MM-DD')} ~ ${range[1].format('YYYY-MM-DD')}`
+    : '全部账单';
+
+  // 范围内有交易的月份（月度统计/趋势图的下钻与跨度）
+  const rangeMonths = useMemo(
+    () =>
+      months.filter(
+        (m) => !range || (m >= range[0].format('YYYY-MM') && m <= range[1].format('YYYY-MM'))
+      ),
+    [months, range]
+  );
+
   const [month, setMonth] = useState<string | undefined>();
-  const current = month ?? currentMonth();
+  const current = month; // undefined = 全部月份
   const catMap = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
 
-  const monthTx = useMemo(() => transactions.filter((t) => monthKey(t.date) === current), [transactions, current]);
+  const monthTx = useMemo(
+    () => rangeTx.filter((t) => !current || monthKey(t.date) === current),
+    [rangeTx, current]
+  );
   const summary = useMemo(() => summarize(monthTx), [monthTx]);
 
-  const rangeFrom = months.length > 0 ? months[0]! : current;
-  const rangeTo = months.length > 0 ? months[months.length - 1]! : current;
+  const trendFrom = range ? range[0].format('YYYY-MM') : rangeMonths[0] ?? currentMonth();
+  const trendTo = range ? range[1].format('YYYY-MM') : rangeMonths[rangeMonths.length - 1] ?? currentMonth();
   const series = useMemo(
-    () => monthlySeries(transactions, rangeFrom, rangeTo),
-    [transactions, rangeFrom, rangeTo]
+    () => monthlySeries(rangeTx, trendFrom, trendTo),
+    [rangeTx, trendFrom, trendTo]
   );
 
   const expenseBreakdown = useMemo(() => {
-    const map = categoryBreakdown(monthTx, 'expense');
+    const map = categoryBreakdown(rangeTx, 'expense');
     return [...map.entries()]
       .map(([catId, amount]) => ({
         name: catId === 'uncategorized' ? '未分类' : (catMap.get(catId)?.name ?? '未分类'),
         value: Math.round(amount * 100) / 100,
       }))
       .sort((a, b) => b.value - a.value);
-  }, [monthTx, catMap]);
+  }, [rangeTx, catMap]);
 
-  // —— 年度统计 ——
+  // —— 年度统计（范围内按年） ——
   const years = useMemo(
-    () => [...new Set(transactions.map((t) => yearOf(t.date)))].sort((a, b) => b - a),
-    [transactions]
+    () => [...new Set(rangeTx.map((t) => yearOf(t.date)))].sort((a, b) => b - a),
+    [rangeTx]
   );
   const [year, setYear] = useState<number | undefined>();
   const currentYear = year ?? years[0];
   const yearTx = useMemo(
-    () => transactions.filter((t) => yearOf(t.date) === currentYear),
-    [transactions, currentYear]
+    () => rangeTx.filter((t) => yearOf(t.date) === currentYear),
+    [rangeTx, currentYear]
   );
   const yearSummary = useMemo(() => summarize(yearTx), [yearTx]);
 
   // —— 支出商户统计 ——
-  const merchants = useMemo(() => counterpartyBreakdown(transactions, 'expense'), [transactions]);
-  const totalExpense = useMemo(() => summarize(transactions).expense, [transactions]);
+  const merchants = useMemo(() => counterpartyBreakdown(rangeTx, 'expense'), [rangeTx]);
+  const totalExpense = useMemo(() => summarize(rangeTx).expense, [rangeTx]);
 
   // —— 全账单收支统计 ——
-  const allSummary = useMemo(() => summarize(transactions), [transactions]);
+  const allSummary = useMemo(() => summarize(rangeTx), [rangeTx]);
 
   return (
     <div>
+      <Card size="small" style={{ marginBottom: 16 }}>
+        <Space wrap>
+          <Typography.Text strong>日期范围</Typography.Text>
+          <RangePicker
+            value={range}
+            onChange={(dates) => setRange(dates as [Dayjs, Dayjs] | null)}
+            allowClear
+            presets={[
+              { label: '本月', value: [dayjs().startOf('month'), dayjs()] },
+              { label: '本年', value: [dayjs().startOf('year'), dayjs()] },
+              { label: '近一年', value: [dayjs().subtract(1, 'year').add(1, 'day'), dayjs()] },
+            ]}
+          />
+          <Typography.Text type="secondary">
+            当前范围：{rangeLabel}（{rangeTx.length} 笔），所有统计随范围联动
+          </Typography.Text>
+        </Space>
+      </Card>
+
       <Card
         title="月度统计"
         extra={
@@ -85,9 +138,9 @@ export default function StatsPage() {
             style={{ width: 140 }}
             value={month}
             allowClear
-            placeholder="选择月份"
+            placeholder="全部月份"
             onChange={setMonth}
-            options={[...months].reverse().map((m) => ({ value: m, label: m }))}
+            options={[...rangeMonths].reverse().map((m) => ({ value: m, label: m }))}
           />
         }
       >
@@ -211,7 +264,7 @@ export default function StatsPage() {
               </Col>
             </Row>
             <Typography.Text type="secondary" style={{ display: 'block', marginTop: 12 }}>
-              统计范围：全部账单（含转账 {formatMoney(allSummary.transfer)}、中性 {formatMoney(allSummary.neutral)}）
+              统计范围：{rangeLabel}（含转账 {formatMoney(allSummary.transfer)}、中性 {formatMoney(allSummary.neutral)}）
             </Typography.Text>
           </>
         )}
@@ -235,9 +288,9 @@ export default function StatsPage() {
         )}
       </Card>
 
-      <Card title={`${current} 支出分类占比`} style={{ marginTop: 16 }}>
+      <Card title={`${current ?? rangeLabel} 支出分类占比`} style={{ marginTop: 16 }}>
         {expenseBreakdown.length === 0 ? (
-          <Empty description="本月暂无支出" />
+          <Empty description="暂无支出" />
         ) : (
           <ResponsiveContainer width="100%" height={300}>
             <PieChart>

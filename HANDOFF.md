@@ -247,6 +247,10 @@ ELECTRON_BUILDER_BINARIES_MIRROR="https://npmmirror.com/mirrors/electron-builder
 - `store.ts`：新增 `autoRules` state（connect/refreshAll 时从 settings.json 加载），`saveAutoRules()` 写入仓库并立即生效；`autoCategorizeUncategorized()` 与导入路径均使用自定义规则。
 - `SettingsPage.tsx` 新增「自动分类规则」卡片：自定义规则表格（类型/分类/关键词 Tags/删除）+ 添加表单（支出/收入、目标分类按类型联动、逗号分隔关键词），内置规则只读展示。规则存数据仓库，多设备同步。
 
+### 统计日期范围筛选
+
+- `StatsPage.tsx` 顶部新增全局「日期范围」筛选（RangePicker，快捷项：本月/本年/近一年，清空=全部账单），**所有统计区块联动**：月度统计（默认全部月份，可选范围内月份）、年度统计（年份选项=范围内年份）、支出商户统计、全账单收支统计（标注当前范围）、收支趋势（按月补全到范围起止）、支出分类占比。顶部实时显示当前范围与笔数。
+
 ---
 
 ## 10. 交接给 GPT 时的建议开场
