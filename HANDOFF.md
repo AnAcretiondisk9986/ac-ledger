@@ -211,6 +211,15 @@ ELECTRON_BUILDER_BINARIES_MIRROR="https://npmmirror.com/mirrors/electron-builder
 - `main.cjs` 桌面化：`Menu.setApplicationMenu(null)` 移除 Windows 默认菜单栏；`setVisualZoomLevelLimits(1, 1)` 禁 Ctrl+滚轮/捏合缩放；`before-input-event` 拦截 Ctrl+=/-/0 缩放快捷键（F12/Ctrl+Shift+I DevTools 保留）。
 - 验证：web tsc、vite build、48 项测试全绿；桌面版需重新打包并覆盖安装目录后生效。
 
+### 无边框窗口（自绘窗口控制）
+
+- `main.cjs`：`frame: false` 隐藏系统标题栏与 ControlBox；新增 `ac-ledger:win:minimize/toggle-maximize/close` IPC；`maximize/unmaximize` 事件广播 `ac-ledger:win:maximized-changed` 给渲染进程切换按钮图标。
+- `preload.cjs` 新增 `windowControls` 桥（minimize/toggleMaximize/close/onMaximizedChange）；`desktop.d.ts` 同步类型。
+- 新增 `apps/web/src/WindowControls.tsx`：SVG 线条图标的最小化/最大化(还原)/关闭按钮（46×32，关闭键悬停变红），仅桌面端渲染（Web 版不显示）。
+- `App.tsx`：Header 与侧栏 Logo 区为 `-webkit-app-region: drag` 拖拽区（交互元素 `no-drag`），双击标题栏空白处切换最大化/还原；首次配置页与连接中页顶部加 32px 拖拽条 + 窗口按钮（无边框窗口下这些页面也必须能拖动/关闭）。
+- `global.css` 新增 `.app-region-drag/.app-region-no-drag/.win-btn` 样式。
+- 注意：无边框窗口无系统标题栏，窗口移动靠顶部拖拽区；Alt+F4、任务栏右键菜单仍可用。桌面版需重新打包并覆盖安装目录后生效。
+
 ---
 
 ## 10. 交接给 GPT 时的建议开场

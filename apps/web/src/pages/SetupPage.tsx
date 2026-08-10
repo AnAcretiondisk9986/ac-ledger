@@ -232,7 +232,7 @@ export default function SetupPage({ standalone = false }: { standalone?: boolean
 
   if (standalone) {
     return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f5f5f5' }}>
+      <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f5f5f5' }}>
         <Card style={{ width: 520 }}>
           <Typography.Title level={3} style={{ marginTop: 0 }}>
             Ac记账

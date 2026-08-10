@@ -16,6 +16,7 @@ import TransactionsPage from './pages/TransactionsPage';
 import ImportPage from './pages/ImportPage';
 import StatsPage from './pages/StatsPage';
 import SettingsPage from './pages/SettingsPage';
+import WindowControls from './WindowControls';
 
 const { Sider, Content, Header } = Layout;
 
@@ -35,11 +36,17 @@ function Shell() {
 
   const current = menuItems.find((m) => location.pathname.startsWith(m.key))?.key ?? '/add';
 
+  // 双击标题栏空白处切换最大化/还原（no-drag 区域内不触发）
+  const handleHeaderDoubleClick = (e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest('.app-region-no-drag')) return;
+    window.acLedgerDesktop?.windowControls?.toggleMaximize();
+  };
+
   return (
     <Layout style={{ height: '100vh', overflow: 'hidden' }}>
       {/* 侧栏固定在窗口左侧，不随内容滚动 */}
       <Sider theme="dark" width={180} style={{ overflow: 'auto' }}>
-        <div style={{ color: '#fff', fontSize: 18, fontWeight: 700, padding: '16px 24px' }}>Ac记账</div>
+        <div className="app-region-drag" style={{ color: '#fff', fontSize: 18, fontWeight: 700, padding: '16px 24px' }}>Ac记账</div>
         <Menu
           theme="dark"
           mode="inline"
@@ -50,6 +57,8 @@ function Shell() {
       </Sider>
       <Layout style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
         <Header
+          className="app-region-drag"
+          onDoubleClick={handleHeaderDoubleClick}
           style={{
             background: '#fff',
             display: 'flex',
@@ -61,6 +70,7 @@ function Shell() {
         >
           <Typography.Text type="secondary">数据源：{useStore((s) => s.config)?.kind === 'github' ? 'GitHub 仓库' : useStore((s) => s.config)?.kind === 'webdav' ? 'WebDAV' : '未配置'}</Typography.Text>
           <Button
+            className="app-region-no-drag"
             icon={<DisconnectOutlined />}
             style={{ marginLeft: 12 }}
             onClick={() => {
@@ -70,6 +80,7 @@ function Shell() {
           >
             断开
           </Button>
+          <WindowControls flushRight />
         </Header>
         <Content style={{ padding: 24, overflow: 'auto', flex: 1 }}>
           <Routes>
@@ -95,15 +106,42 @@ export default function App() {
   }, []);
 
   if (status === 'unconfigured' || status === 'error') {
-    return <SetupPage standalone />;
+    return (
+      <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
+        <div
+          className="app-region-drag"
+          style={{
+            height: 32,
+            flexShrink: 0,
+            display: 'flex',
+            justifyContent: 'flex-end',
+            alignItems: 'center',
+            background: '#f5f5f5',
+          }}
+        >
+          <WindowControls />
+        </div>
+        <div style={{ flex: 1, overflow: 'auto' }}>
+          <SetupPage standalone />
+        </div>
+      </div>
+    );
   }
 
   if (status === 'connecting') {
     return (
-      <div style={{ display: 'flex', height: '100vh', alignItems: 'center', justifyContent: 'center' }}>
-        <Spin size="large" tip="正在连接数据源…">
-          <div style={{ width: 120, height: 60 }} />
-        </Spin>
+      <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
+        <div
+          className="app-region-drag"
+          style={{ height: 32, flexShrink: 0, display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}
+        >
+          <WindowControls />
+        </div>
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <Spin size="large" tip="正在连接数据源…">
+            <div style={{ width: 120, height: 60 }} />
+          </Spin>
+        </div>
       </div>
     );
   }

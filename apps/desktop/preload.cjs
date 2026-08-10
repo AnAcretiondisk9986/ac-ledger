@@ -25,6 +25,17 @@ contextBridge.exposeInMainWorld('acLedgerDesktop', {
   webdav: {
     request: (config, request) => invoke('ac-ledger:webdav:request', config, request),
   },
+  /** 窗口控制（无边框窗口的自绘最小化/最大化/关闭按钮） */
+  windowControls: {
+    minimize: () => invoke('ac-ledger:win:minimize'),
+    toggleMaximize: () => invoke('ac-ledger:win:toggle-maximize'),
+    close: () => invoke('ac-ledger:win:close'),
+    onMaximizedChange: (cb) => {
+      const listener = (_e, v) => cb(v);
+      ipcRenderer.on('ac-ledger:win:maximized-changed', listener);
+      return () => ipcRenderer.removeListener('ac-ledger:win:maximized-changed', listener);
+    },
+  },
   /** 本地文件存储（对应 FileSystemOps 接口，路径为数据目录内相对路径） */
   storage: {
     rootDir: () => invoke('ac-ledger:fs:root'),

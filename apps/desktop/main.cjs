@@ -68,6 +68,20 @@ function registerDeviceFlowIpc() {
   });
 }
 
+function registerWindowIpc() {
+  ipcMain.handle('ac-ledger:win:minimize', () => {
+    if (mainWindow) mainWindow.minimize();
+  });
+  ipcMain.handle('ac-ledger:win:toggle-maximize', () => {
+    if (!mainWindow) return;
+    if (mainWindow.isMaximized()) mainWindow.unmaximize();
+    else mainWindow.maximize();
+  });
+  ipcMain.handle('ac-ledger:win:close', () => {
+    if (mainWindow) mainWindow.close(); // 触发 close 事件 → app.quit()
+  });
+}
+
 let mainWindow = null;
 
 function createWindow() {
@@ -77,6 +91,7 @@ function createWindow() {
     minWidth: 960,
     minHeight: 600,
     title: 'Ac记账',
+    frame: false, // 隐藏系统标题栏（ControlBox），窗口控制按钮自绘在界面内
     backgroundColor: '#f5f5f5',
     show: false,
     webPreferences: {
@@ -87,6 +102,13 @@ function createWindow() {
     },
   });
   mainWindow = win;
+
+  // 最大化/还原状态变化时通知渲染进程（自绘按钮切换图标）
+  const sendMaximized = () => {
+    if (!win.isDestroyed()) win.webContents.send('ac-ledger:win:maximized-changed', win.isMaximized());
+  };
+  win.on('maximize', sendMaximized);
+  win.on('unmaximize', sendMaximized);
 
   // 禁用页面缩放（Ctrl+滚轮 / 触控板捏合），保持桌面应用观感
   win.webContents.setVisualZoomLevelLimits(1, 1);
@@ -230,6 +252,7 @@ if (!gotLock) {
     registerWebDAVIpc();
     registerShellIpc();
     registerDeviceFlowIpc();
+    registerWindowIpc();
     createWindow();
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();

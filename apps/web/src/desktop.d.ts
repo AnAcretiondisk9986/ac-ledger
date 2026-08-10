@@ -17,6 +17,14 @@ declare global {
       };
       /** 主进程 WebDAV 请求桥 */
       webdav?: WebDAVRequestBridge;
+      /** 无边框窗口控制桥（仅桌面版存在） */
+      windowControls?: {
+        minimize(): Promise<void>;
+        toggleMaximize(): Promise<void>;
+        close(): Promise<void>;
+        /** 订阅最大化状态变化，返回取消订阅函数 */
+        onMaximizedChange(cb: (maximized: boolean) => void): () => void;
+      };
       /** 本地存储 IPC 桥（FileSystemOps + 数据目录查询） */
       storage: FileSystemOps & { rootDir(): Promise<string>; selectRootDir(): Promise<string | null> };
     };
