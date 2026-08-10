@@ -105,6 +105,32 @@ describe('GitHubAdapter', () => {
     expect(putBody2.sha).toBe('new-sha');
   });
 
+  it('getCommitDates：从 commits API 提取文件最后提交时间（含 basePath 剥离）', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => [
+        {
+          commit: { committer: { date: '2026-08-01T10:00:00Z' } },
+          files: [{ filename: 'data/ledger.json' }, { filename: 'data/transactions/2026-08.json' }],
+        },
+        {
+          commit: { committer: { date: '2026-07-01T10:00:00Z' } },
+          files: [{ filename: 'data/ledger.json' }],
+        },
+      ],
+    } as Response);
+    vi.stubGlobal('fetch', fetchMock);
+
+    const adapter = makeAdapter(); // basePath: 'data'
+    const dates = await adapter.getCommitDates();
+    // 最新提交时间胜出；路径剥离 basePath
+    expect(dates.get('ledger.json')).toBe(Date.parse('2026-08-01T10:00:00Z'));
+    expect(dates.get('transactions/2026-08.json')).toBe(Date.parse('2026-08-01T10:00:00Z'));
+    const url = fetchMock.mock.calls[0]?.[0] as string;
+    expect(url).toContain('/commits?sha=main&per_page=50');
+  });
+
   it('写入冲突抛 StorageConflictError', async () => {
     // 第一次调用（GET 查当前 sha）成功，第二次调用（PUT）返回 409
     const fetchMock = vi
