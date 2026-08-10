@@ -71,6 +71,25 @@ export function categoryBreakdown(
   return map;
 }
 
+/** 按交易对方聚合（笔数 + 金额），按金额降序排列 */
+export function counterpartyBreakdown(
+  transactions: Transaction[],
+  kind: 'income' | 'expense'
+): { name: string; count: number; amount: number }[] {
+  const map = new Map<string, { count: number; amount: number }>();
+  for (const tx of transactions) {
+    if (tx.type !== kind) continue;
+    const name = tx.counterparty.trim() || '（无对方）';
+    const entry = map.get(name) ?? { count: 0, amount: 0 };
+    entry.count += 1;
+    entry.amount += tx.amount;
+    map.set(name, entry);
+  }
+  return [...map.entries()]
+    .map(([name, v]) => ({ name, count: v.count, amount: round(v.amount) }))
+    .sort((a, b) => b.amount - a.amount);
+}
+
 /** 按月份聚合（用于趋势图），返回 { month, income, expense }[] */
 export function monthlySeries(
   transactions: Transaction[],

@@ -220,6 +220,14 @@ ELECTRON_BUILDER_BINARIES_MIRROR="https://npmmirror.com/mirrors/electron-builder
 - `global.css` 新增 `.app-region-drag/.app-region-no-drag/.win-btn` 样式。
 - 注意：无边框窗口无系统标题栏，窗口移动靠顶部拖拽区；Alt+F4、任务栏右键菜单仍可用。桌面版需重新打包并覆盖安装目录后生效。
 
+### 统计板块扩充
+
+- `packages/core/src/stats.ts` 新增 `counterpartyBreakdown(transactions, kind)`：按交易对方聚合笔数与金额，按金额降序（空商户名归为「（无对方）」）；stats.test.ts 新增用例（全量 49 项测试）。
+- `StatsPage.tsx` 新增三块统计（按此顺序置于收支趋势之前）：
+  - **年度统计**：年份下拉（默认最新年），收入/支出/结余/笔数四卡片；
+  - **支出商户统计**：全量支出按商户聚合表格（排名/商户/笔数/金额/占比，分页 10 条/页）；
+  - **全账单收支统计**：全部账单收入/支出/结余/笔数 + 转账/中性说明。
+
 ---
 
 ## 10. 交接给 GPT 时的建议开场

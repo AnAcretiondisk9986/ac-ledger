@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Transaction } from '../types.js';
-import { currentMonth, monthKey, monthlySeries, nextMonth, summarize } from '../stats.js';
+import { counterpartyBreakdown, currentMonth, monthKey, monthlySeries, nextMonth, summarize } from '../stats.js';
 
 function tx(partial: Partial<Transaction> & { id: string; date: string; type: Transaction['type']; amount: number }): Transaction {
   return {
@@ -54,6 +54,24 @@ describe('stats', () => {
       { month: '2026-08', income: 100, expense: 0 },
       { month: '2026-09', income: 0, expense: 50 },
       { month: '2026-10', income: 0, expense: 0 },
+    ]);
+  });
+
+  it('商户聚合按金额降序', () => {
+    const rows = counterpartyBreakdown(
+      [
+        tx({ id: '1', date: '2026-08-01T10:00:00+08:00', type: 'expense', amount: 10, counterparty: '便利店' }),
+        tx({ id: '2', date: '2026-08-02T10:00:00+08:00', type: 'expense', amount: 99.5, counterparty: '超市' }),
+        tx({ id: '3', date: '2026-08-03T10:00:00+08:00', type: 'expense', amount: 20, counterparty: '便利店' }),
+        tx({ id: '4', date: '2026-08-04T10:00:00+08:00', type: 'income', amount: 5000, counterparty: '公司' }),
+        tx({ id: '5', date: '2026-08-05T10:00:00+08:00', type: 'expense', amount: 0.5, counterparty: '  ' }),
+      ],
+      'expense'
+    );
+    expect(rows).toEqual([
+      { name: '超市', count: 1, amount: 99.5 },
+      { name: '便利店', count: 2, amount: 30 },
+      { name: '（无对方）', count: 1, amount: 0.5 },
     ]);
   });
 });
