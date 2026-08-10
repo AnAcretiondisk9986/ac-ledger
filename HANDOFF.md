@@ -266,6 +266,10 @@ ELECTRON_BUILDER_BINARIES_MIRROR="https://npmmirror.com/mirrors/electron-builder
 - Web 版保持实时直连 GitHub（浏览器无本地目录）；WebDAV/本地模式不受影响。
 - 测试：`sync.test.ts` 7 个用例（推送/拉取/并集/取新/一致跳过），全量 **66 项测试**。
 
+### 图表类型切换
+
+- `StatsPage.tsx` 两个图表 Card 的 extra 增加 `Segmented` 切换器：**收支趋势**支持 柱状图 ↔ 折线图（LineChart，monotone 曲线）；**支出分类占比**支持 饼图 ↔ 横向柱状图（分类名纵轴、金额横轴，颜色沿用饼图配色）。
+
 ---
 
 ## 10. 交接给 GPT 时的建议开场

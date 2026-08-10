@@ -1,10 +1,12 @@
 import { useMemo, useState } from 'react';
-import { Card, Row, Col, Statistic, Select, Empty, Table, Typography, DatePicker, Space } from 'antd';
+import { Card, Row, Col, Statistic, Select, Empty, Table, Typography, DatePicker, Space, Segmented } from 'antd';
 import type { Dayjs } from 'dayjs';
 import dayjs from 'dayjs';
 import {
   BarChart,
   Bar,
+  LineChart,
+  Line,
   XAxis,
   YAxis,
   Tooltip,
@@ -109,6 +111,10 @@ export default function StatsPage() {
 
   // —— 全账单收支统计 ——
   const allSummary = useMemo(() => summarize(rangeTx), [rangeTx]);
+
+  // —— 图表类型切换 ——
+  const [trendType, setTrendType] = useState<'bar' | 'line'>('bar');
+  const [catType, setCatType] = useState<'pie' | 'bar'>('pie');
 
   return (
     <div>
@@ -270,38 +276,91 @@ export default function StatsPage() {
         )}
       </Card>
 
-      <Card title="收支趋势" style={{ marginTop: 16 }}>
+      <Card
+        title="收支趋势"
+        style={{ marginTop: 16 }}
+        extra={
+          <Segmented
+            value={trendType}
+            onChange={(v) => setTrendType(v as 'bar' | 'line')}
+            options={[
+              { label: '柱状图', value: 'bar' },
+              { label: '折线图', value: 'line' },
+            ]}
+          />
+        }
+      >
         {series.length === 0 ? (
           <Empty description="暂无数据" />
         ) : (
           <ResponsiveContainer width="100%" height={280}>
-            <BarChart data={series}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="month" />
-              <YAxis />
-              <Tooltip formatter={(v) => formatMoney(Number(v))} />
-              <Legend />
-              <Bar dataKey="income" name="收入" fill="#52c41a" />
-              <Bar dataKey="expense" name="支出" fill="#f5222d" />
-            </BarChart>
+            {trendType === 'line' ? (
+              <LineChart data={series}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="month" />
+                <YAxis />
+                <Tooltip formatter={(v) => formatMoney(Number(v))} />
+                <Legend />
+                <Line type="monotone" dataKey="income" name="收入" stroke="#52c41a" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="expense" name="支出" stroke="#f5222d" strokeWidth={2} dot={false} />
+              </LineChart>
+            ) : (
+              <BarChart data={series}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="month" />
+                <YAxis />
+                <Tooltip formatter={(v) => formatMoney(Number(v))} />
+                <Legend />
+                <Bar dataKey="income" name="收入" fill="#52c41a" />
+                <Bar dataKey="expense" name="支出" fill="#f5222d" />
+              </BarChart>
+            )}
           </ResponsiveContainer>
         )}
       </Card>
 
-      <Card title={`${current ?? rangeLabel} 支出分类占比`} style={{ marginTop: 16 }}>
+      <Card
+        title={`${current ?? rangeLabel} 支出分类占比`}
+        style={{ marginTop: 16 }}
+        extra={
+          <Segmented
+            value={catType}
+            onChange={(v) => setCatType(v as 'pie' | 'bar')}
+            options={[
+              { label: '饼图', value: 'pie' },
+              { label: '柱状图', value: 'bar' },
+            ]}
+          />
+        }
+      >
         {expenseBreakdown.length === 0 ? (
           <Empty description="暂无支出" />
         ) : (
           <ResponsiveContainer width="100%" height={300}>
-            <PieChart>
-              <Pie data={expenseBreakdown} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={100} label={(e) => `${e.name} ${formatMoney(e.value)}`}>
-                {expenseBreakdown.map((_, i) => (
-                  <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
-                ))}
-              </Pie>
-              <Tooltip formatter={(v) => formatMoney(Number(v))} />
-              <Legend />
-            </PieChart>
+            {catType === 'bar' ? (
+              <BarChart data={expenseBreakdown} layout="vertical" margin={{ left: 40, right: 24 }}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis type="number" />
+                <YAxis type="category" dataKey="name" width={80} />
+                <Tooltip formatter={(v) => formatMoney(Number(v))} />
+                <Legend />
+                <Bar dataKey="value" name="金额" radius={[0, 4, 4, 0]}>
+                  {expenseBreakdown.map((_, i) => (
+                    <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                  ))}
+                </Bar>
+              </BarChart>
+            ) : (
+              <PieChart>
+                <Pie data={expenseBreakdown} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={100} label={(e) => `${e.name} ${formatMoney(e.value)}`}>
+                  {expenseBreakdown.map((_, i) => (
+                    <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip formatter={(v) => formatMoney(Number(v))} />
+                <Legend />
+              </PieChart>
+            )}
           </ResponsiveContainer>
         )}
       </Card>
