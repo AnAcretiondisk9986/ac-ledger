@@ -13,7 +13,7 @@ import {
 } from 'antd';
 import { InboxOutlined, FileExcelOutlined } from '@ant-design/icons';
 import { parseBill, BillParseResult } from '@ac-ledger/bill-import';
-import { formatMoney } from '@ac-ledger/core';
+import { applyAutoCategory, formatMoney, guessCategoryName } from '@ac-ledger/core';
 import { useStore } from '../store';
 import { Transaction } from '@ac-ledger/core';
 
@@ -26,6 +26,7 @@ const TYPE_TAG: Record<string, { color: string; label: string }> = {
 
 export default function ImportPage() {
   const transactions = useStore((s) => s.transactions);
+  const categories = useStore((s) => s.categories);
   const addTransactions = useStore((s) => s.addTransactions);
   const { message } = AntApp.useApp();
 
@@ -64,7 +65,9 @@ export default function ImportPage() {
     if (!dedup) return;
     setImporting(true);
     try {
-      const result = await addTransactions(dedup.fresh);
+      // 按商户名/备注自动匹配分类（仅未分类的收支交易），可导入后在账单页修改
+      const toAdd = applyAutoCategory(dedup.fresh, categories);
+      const result = await addTransactions(toAdd);
       message.success(`导入完成：新增 ${result.added} 笔，跳过重复 ${result.skipped} 笔`);
       setStep(2);
     } catch (e) {
@@ -83,6 +86,15 @@ export default function ImportPage() {
       render: (v: string) => <Tag color={TYPE_TAG[v]?.color}>{TYPE_TAG[v]?.label ?? v}</Tag>,
     },
     { title: '对方', dataIndex: 'counterparty', ellipsis: true, width: 160 },
+    {
+      title: '自动分类',
+      width: 110,
+      render: (_: unknown, r: Transaction) => {
+        const name = guessCategoryName(`${r.counterparty} ${r.note}`, r.type);
+        const cat = name ? categories.find((c) => c.kind === (r.type === 'income' ? 'income' : 'expense') && c.name === name) : undefined;
+        return cat ? `${cat.icon ?? ''} ${cat.name}` : '-';
+      },
+    },
     { title: '备注', dataIndex: 'note', ellipsis: true },
     {
       title: '金额',
@@ -133,6 +145,7 @@ export default function ImportPage() {
             description={
               <Space wrap>
                 <span>共 {parsed.transactions.length} 笔</span>
+                <span>导入时将按商户名自动匹配分类（可在导入后在账单页修改）</span>
                 {parsed.header && (
                   <span>
                     微信账单：收入 {parsed.header.income} 笔 / 支出 {parsed.header.expense} 笔 / 中性{' '}

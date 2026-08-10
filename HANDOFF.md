@@ -228,6 +228,12 @@ ELECTRON_BUILDER_BINARIES_MIRROR="https://npmmirror.com/mirrors/electron-builder
   - **支出商户统计**：全量支出按商户聚合表格（排名/商户/笔数/金额/占比，分页 10 条/页）；
   - **全账单收支统计**：全部账单收入/支出/结余/笔数 + 转账/中性说明。
 
+### 商户名自动分类
+
+- 新增 `packages/core/src/auto-category.ts`：`EXPENSE_AUTO_RULES`（餐饮/交通/购物/居住/娱乐/医疗/教育/人情/其他，约 140 关键词）与 `INCOME_AUTO_RULES`（工资/理财/红包/兼职/其他）；`guessCategoryName(text, type)` 做包含匹配（不区分大小写）；`applyAutoCategory(transactions, categories)` 仅填充未分类的收支交易，已分类/转账/中性不动，分类被重命名或删除时保持未分类。
+- `ImportPage.tsx`：预览表格新增「自动分类」列展示猜测结果；确认导入时先 `applyAutoCategory` 再入库；解析成功提示中注明自动分类。
+- 测试：`auto-category.test.ts` 5 个用例（全量 54 项测试）。
+
 ---
 
 ## 10. 交接给 GPT 时的建议开场
