@@ -52,6 +52,20 @@ export function saveConfig(config: StorageConfig | null): void {
   else localStorage.removeItem(CONFIG_KEY);
 }
 
+/** 按 id/refId 过滤出真正新增的交易（与 repository 去重规则一致） */
+function dedupNewTransactions(existing: Transaction[], incoming: Transaction[]): Transaction[] {
+  const ids = new Set(existing.map((t) => t.id));
+  const refIds = new Set(existing.filter((t) => t.refId).map((t) => t.refId));
+  return incoming.filter((t) => !ids.has(t.id) && !(t.refId && refIds.has(t.refId)));
+}
+
+/** 合并新增交易的月份到月份列表（升序、去重） */
+function mergeMonths(current: string[], added: Transaction[]): string[] {
+  const set = new Set(current);
+  for (const t of added) set.add(t.date.slice(0, 7));
+  return [...set].sort();
+}
+
 /** 根据配置创建适配器 */
 export function createAdapter(config: StorageConfig): StorageAdapter {
   if (config.kind === 'github') {
@@ -231,10 +245,14 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   async addTransactions(list) {
-    const { repo } = get();
+    const { repo, transactions, months } = get();
     if (!repo) throw new Error('尚未连接数据源');
     const result = await repo.addTransactions(list);
-    await get().refreshAll();
+    // 内存合并新增交易，避免保存后全量刷新（GitHub 模式下是 N+5 个串行请求）
+    if (result.added > 0) {
+      const fresh = dedupNewTransactions(transactions, list);
+      set({ transactions: [...transactions, ...fresh], months: mergeMonths(months, fresh) });
+    }
     return result;
   },
 
@@ -248,23 +266,37 @@ export const useStore = create<AppState>((set, get) => ({
     const after = applyAutoCategory(transactions, categories, autoRules);
     const byId = new Map(transactions.map((t) => [t.id, t]));
     const changed = after.filter((t) => byId.get(t.id)?.categoryId !== t.categoryId);
-    if (changed.length > 0) await repo.updateTransactions(changed);
-    await get().refreshAll();
+    if (changed.length > 0) {
+      await repo.updateTransactions(changed);
+      // 内存替换被分类的交易，免全量刷新
+      const changedById = new Map(changed.map((t) => [t.id, t]));
+      set({ transactions: transactions.map((t) => changedById.get(t.id) ?? t) });
+    }
     return { updated: changed.length, unmatched: uncategorized.length - changed.length };
   },
 
   async updateTransaction(tx) {
-    const { repo } = get();
+    const { repo, transactions } = get();
     if (!repo) throw new Error('尚未连接数据源');
     await repo.updateTransaction(tx);
-    await get().refreshAll();
+    // 内存替换该笔，免全量刷新
+    set({ transactions: transactions.map((t) => (t.id === tx.id ? tx : t)) });
   },
 
   async removeTransaction(id) {
-    const { repo } = get();
+    const { repo, transactions, months } = get();
     if (!repo) throw new Error('尚未连接数据源');
     await repo.removeTransaction(id);
-    await get().refreshAll();
+    // 内存移除该笔；若该月已无交易则同步收窄月份列表，免全量刷新
+    const removed = transactions.find((t) => t.id === id);
+    const next = transactions.filter((t) => t.id !== id);
+    if (removed) {
+      const m = removed.date.slice(0, 7);
+      const stillHas = next.some((t) => t.date.slice(0, 7) === m);
+      set({ transactions: next, months: stillHas ? months : months.filter((x) => x !== m) });
+    } else {
+      set({ transactions: next });
+    }
   },
 
   async saveAccounts(accounts) {

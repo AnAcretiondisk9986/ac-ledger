@@ -251,6 +251,12 @@ ELECTRON_BUILDER_BINARIES_MIRROR="https://npmmirror.com/mirrors/electron-builder
 
 - `StatsPage.tsx` 顶部新增全局「日期范围」筛选（RangePicker，快捷项：本月/本年/近一年，清空=全部账单），**所有统计区块联动**：月度统计（默认全部月份，可选范围内月份）、年度统计（年份选项=范围内年份）、支出商户统计、全账单收支统计（标注当前范围）、收支趋势（按月补全到范围起止）、支出分类占比。顶部实时显示当前范围与笔数。
 
+### 保存性能优化
+
+- **根因**：每次保存（导入/编辑/删除/补分类）后 `refreshAll()` 全量重拉——GitHub 模式下是 N 个月文件 + ledger/accounts/categories/settings + tree 列表 ≈ N+5 个串行请求；且 `writeFile` 每次写前都额外 GET 一次查 sha。
+- `store.ts`：`addTransactions`/`updateTransaction`/`removeTransaction`/`autoCategorizeUncategorized` 改为**内存合并**（按 id/refId 去重、月份列表收窄），保存后不再全量刷新；编辑/删除/补分类的网络开销从 ~19 个请求降到 1-2 个。
+- `github.ts`：新增文件 sha 缓存（GET 时记录、PUT 成功用响应更新、冲突/404 清除），写前免查询；同一文件的「读→写」连续操作（如 mergeMonth）从 2 个请求降为 1 个。github.test.ts 新增缓存命中测试（全量 58 项测试）。
+
 ---
 
 ## 10. 交接给 GPT 时的建议开场

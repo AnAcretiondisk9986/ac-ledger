@@ -66,6 +66,45 @@ describe('GitHubAdapter', () => {
     expect(body.sha).toBe('old-sha');
   });
 
+  it('写入命中 sha 缓存时不再查询 GET', async () => {
+    const fetchMock = vi
+      .fn()
+      // readFile：GET 返回内容 + sha（同时填充缓存）
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ content: Buffer.from('[]', 'utf8').toString('base64'), sha: 'cached-sha' }),
+      } as Response)
+      // writeFile：应只发 PUT（sha 用缓存），PUT 成功返回新 sha
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ content: { sha: 'new-sha' } }),
+      } as Response);
+    vi.stubGlobal('fetch', fetchMock);
+
+    const adapter = makeAdapter();
+    await adapter.readFile('accounts.json');
+    await adapter.writeFile('accounts.json', '[]');
+
+    const methods = fetchMock.mock.calls.map((c) => (c[1]?.method as string) ?? 'GET');
+    expect(methods).toEqual(['GET', 'PUT']);
+    const putBody = JSON.parse(fetchMock.mock.calls[1]![1]!.body as string);
+    expect(putBody.sha).toBe('cached-sha');
+
+    // 第二次写入：缓存已更新为 new-sha，仍然只有 PUT
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ content: { sha: 'newer-sha' } }),
+    } as Response);
+    await adapter.writeFile('accounts.json', '[1]');
+    const methods2 = fetchMock.mock.calls.slice(2).map((c) => (c[1]?.method as string) ?? 'GET');
+    expect(methods2).toEqual(['PUT']);
+    const putBody2 = JSON.parse(fetchMock.mock.calls[2]![1]!.body as string);
+    expect(putBody2.sha).toBe('new-sha');
+  });
+
   it('写入冲突抛 StorageConflictError', async () => {
     // 第一次调用（GET 查当前 sha）成功，第二次调用（PUT）返回 409
     const fetchMock = vi

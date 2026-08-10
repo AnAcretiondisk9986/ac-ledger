@@ -50,6 +50,8 @@ export class GitHubAdapter implements StorageAdapter {
   private resolvedBranch: string;
   private branchExists: boolean | null = null;
   private defaultBranch = 'main';
+  /** 文件 sha 缓存：写前免查询，PUT/DELETE 成功后更新，冲突/404 时清除 */
+  private shaCache = new Map<string, string>();
 
   constructor(private readonly config: GitHubConfig) {
     this.resolvedBranch = config.branch?.trim() || 'main';
@@ -116,17 +118,21 @@ export class GitHubAdapter implements StorageAdapter {
         'GET',
         `${API}/repos/${this.config.owner}/${this.config.repo}/contents/${encodePath(p)}?ref=${encodeURIComponent(this.branch)}`
       );
+      if (data.sha) this.shaCache.set(p, data.sha);
       return data.content ? decodeBase64(data.content) : null;
     } catch (e) {
-      if (e instanceof StorageNotFoundError) return null;
+      if (e instanceof StorageNotFoundError) {
+        this.shaCache.delete(p);
+        return null;
+      }
       throw e;
     }
   }
 
   async writeFile(path: string, content: string, opts?: WriteOptions): Promise<void> {
     const p = this.fullPath(path);
-    // 乐观锁：期望 sha 存在时先查询当前 sha，不匹配即冲突
-    let currentSha: string | undefined = opts?.expectedSha;
+    // 乐观锁：期望 sha 存在时优先用缓存，缓存未命中才查询当前 sha
+    let currentSha: string | undefined = opts?.expectedSha ?? this.shaCache.get(p);
     if (!currentSha && this.branchExists !== false) {
       try {
         const { data } = await this.request<GitHubContentResponse>(
@@ -134,8 +140,10 @@ export class GitHubAdapter implements StorageAdapter {
           `${API}/repos/${this.config.owner}/${this.config.repo}/contents/${encodePath(p)}?ref=${encodeURIComponent(this.branch)}`
         );
         currentSha = data.sha;
+        if (data.sha) this.shaCache.set(p, data.sha);
       } catch (e) {
         if (!(e instanceof StorageNotFoundError)) throw e; // 文件不存在 → 新建
+        this.shaCache.delete(p);
       }
     }
     const body: Record<string, unknown> = {
@@ -145,8 +153,21 @@ export class GitHubAdapter implements StorageAdapter {
     // 空仓库尚无分支：首个 Contents API 写入不能携带 ref，由 GitHub 创建默认分支。
     if (this.branchExists !== false) body.branch = this.branch;
     if (currentSha) body.sha = currentSha;
-    await this.request('PUT', `${API}/repos/${this.config.owner}/${this.config.repo}/contents/${encodePath(p)}`, body);
-    this.branchExists = true;
+    try {
+      const { data } = await this.request<{ content?: { sha?: string } }>(
+        'PUT',
+        `${API}/repos/${this.config.owner}/${this.config.repo}/contents/${encodePath(p)}`,
+        body
+      );
+      this.branchExists = true;
+      const newSha = data.content?.sha;
+      if (newSha) this.shaCache.set(p, newSha);
+      else this.shaCache.delete(p);
+    } catch (e) {
+      // 冲突后缓存失效，重试时会重新读取远端 sha
+      this.shaCache.delete(p);
+      throw e;
+    }
   }
 
   async listFiles(prefix = ''): Promise<{ path: string; sha?: string; size?: number }[]> {
@@ -172,7 +193,7 @@ export class GitHubAdapter implements StorageAdapter {
   async deleteFile(path: string, opts?: WriteOptions): Promise<void> {
     if (this.branchExists === false) return;
     const p = this.fullPath(path);
-    let sha = opts?.expectedSha;
+    let sha = opts?.expectedSha ?? this.shaCache.get(p);
     if (!sha) {
       try {
         const { data } = await this.request<GitHubContentResponse>(
@@ -180,8 +201,12 @@ export class GitHubAdapter implements StorageAdapter {
           `${API}/repos/${this.config.owner}/${this.config.repo}/contents/${encodePath(p)}?ref=${encodeURIComponent(this.branch)}`
         );
         sha = data.sha;
+        if (data.sha) this.shaCache.set(p, data.sha);
       } catch (e) {
-        if (e instanceof StorageNotFoundError) return; // 已不存在，视为成功
+        if (e instanceof StorageNotFoundError) {
+          this.shaCache.delete(p);
+          return; // 已不存在，视为成功
+        }
         throw e;
       }
     }
@@ -190,6 +215,7 @@ export class GitHubAdapter implements StorageAdapter {
       sha,
       branch: this.branch,
     });
+    this.shaCache.delete(p);
   }
 
   async testConnection(): Promise<void> {
