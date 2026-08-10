@@ -1,5 +1,12 @@
 import { create } from 'zustand';
-import { Account, Category, LedgerFile, Transaction, applyAutoCategory } from '@ac-ledger/core';
+import {
+  Account,
+  AutoCategoryRules,
+  Category,
+  LedgerFile,
+  Transaction,
+  applyAutoCategory,
+} from '@ac-ledger/core';
 import {
   AddResult,
   DesktopWebDAVAdapter,
@@ -92,6 +99,8 @@ interface AppState {
   categories: Category[];
   transactions: Transaction[];
   months: string[];
+  /** 自动分类自定义规则（存于 settings.json） */
+  autoRules: AutoCategoryRules;
 
   /** 用配置连接并初始化账本 */
   connect(config: StorageConfig): Promise<void>;
@@ -111,6 +120,8 @@ interface AppState {
   removeTransaction(id: string): Promise<void>;
   saveAccounts(accounts: Account[]): Promise<void>;
   saveCategories(categories: Category[]): Promise<void>;
+  /** 保存自动分类自定义规则（settings.json） */
+  saveAutoRules(rules: AutoCategoryRules): Promise<void>;
 }
 
 export const useStore = create<AppState>((set, get) => ({
@@ -123,6 +134,7 @@ export const useStore = create<AppState>((set, get) => ({
   categories: [],
   transactions: [],
   months: [],
+  autoRules: {},
 
   async connect(config) {
     const attempt = ++connectionAttempt;
@@ -138,12 +150,13 @@ export const useStore = create<AppState>((set, get) => ({
       await adapter.testConnection();
       const repo = new LedgerRepository(adapter);
       await repo.initLedger({ name: '我的账本' });
-      const [ledger, accounts, categories, transactions, months] = await Promise.all([
+      const [ledger, accounts, categories, transactions, months, settings] = await Promise.all([
         repo.getLedger(),
         repo.getAccounts(),
         repo.getCategories(),
         repo.getTransactions(),
         repo.listMonths(),
+        repo.getSettings(),
       ]);
       if (attempt !== connectionAttempt) return;
       saveConfig(effective);
@@ -155,6 +168,7 @@ export const useStore = create<AppState>((set, get) => ({
         categories,
         transactions,
         months,
+        autoRules: settings?.autoCategoryRules ?? {},
         status: 'ready',
         error: null,
       });
@@ -198,20 +212,22 @@ export const useStore = create<AppState>((set, get) => ({
       categories: [],
       transactions: [],
       months: [],
+      autoRules: {},
     });
   },
 
   async refreshAll() {
     const { repo } = get();
     if (!repo) return;
-    const [ledger, accounts, categories, transactions, months] = await Promise.all([
+    const [ledger, accounts, categories, transactions, months, settings] = await Promise.all([
       repo.getLedger(),
       repo.getAccounts(),
       repo.getCategories(),
       repo.getTransactions(),
       repo.listMonths(),
+      repo.getSettings(),
     ]);
-    set({ ledger, accounts, categories, transactions, months });
+    set({ ledger, accounts, categories, transactions, months, autoRules: settings?.autoCategoryRules ?? {} });
   },
 
   async addTransactions(list) {
@@ -223,13 +239,13 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   async autoCategorizeUncategorized() {
-    const { repo, transactions, categories } = get();
+    const { repo, transactions, categories, autoRules } = get();
     if (!repo) throw new Error('尚未连接数据源');
     const uncategorized = transactions.filter(
       (t) => !t.categoryId && (t.type === 'income' || t.type === 'expense')
     );
     if (uncategorized.length === 0) return { updated: 0, unmatched: 0 };
-    const after = applyAutoCategory(transactions, categories);
+    const after = applyAutoCategory(transactions, categories, autoRules);
     const byId = new Map(transactions.map((t) => [t.id, t]));
     const changed = after.filter((t) => byId.get(t.id)?.categoryId !== t.categoryId);
     if (changed.length > 0) await repo.updateTransactions(changed);
@@ -256,6 +272,14 @@ export const useStore = create<AppState>((set, get) => ({
     if (!repo) throw new Error('尚未连接数据源');
     await repo.saveAccounts(accounts);
     set({ accounts });
+  },
+
+  async saveAutoRules(rules) {
+    const { repo } = get();
+    if (!repo) throw new Error('尚未连接数据源');
+    const existing = (await repo.getSettings()) ?? { version: 1 as const };
+    await repo.saveSettings({ ...existing, autoCategoryRules: rules });
+    set({ autoRules: rules });
   },
 
   async saveCategories(categories) {

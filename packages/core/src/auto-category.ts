@@ -12,6 +12,12 @@ export interface AutoCategoryRule {
   keywords: string[];
 }
 
+/** 按交易类型分组的自定义规则（存于仓库 settings.json） */
+export interface AutoCategoryRules {
+  income?: AutoCategoryRule[];
+  expense?: AutoCategoryRule[];
+}
+
 /** 支出分类关键词规则 */
 export const EXPENSE_AUTO_RULES: AutoCategoryRule[] = [
   {
@@ -104,10 +110,17 @@ export const INCOME_AUTO_RULES: AutoCategoryRule[] = [
   },
 ];
 
-/** 根据文本（商户名 + 备注）与交易类型猜测分类名；未命中返回 null */
-export function guessCategoryName(text: string, type: TransactionType): string | null {
+/**
+ * 根据文本（商户名 + 备注）与交易类型猜测分类名；未命中返回 null。
+ * 传入自定义规则时，自定义规则优先于内置规则匹配。
+ */
+export function guessCategoryName(
+  text: string,
+  type: TransactionType,
+  custom?: AutoCategoryRules
+): string | null {
   if (type !== 'income' && type !== 'expense') return null;
-  const rules = type === 'income' ? INCOME_AUTO_RULES : EXPENSE_AUTO_RULES;
+  const rules = [...(custom?.[type] ?? []), ...(type === 'income' ? INCOME_AUTO_RULES : EXPENSE_AUTO_RULES)];
   const lower = text.toLowerCase();
   for (const rule of rules) {
     for (const kw of rule.keywords) {
@@ -127,12 +140,16 @@ function findCategoryId(categories: Category[], kind: 'income' | 'expense', name
  * - 仅处理 type 为 income/expense 且尚未分类（categoryId 为空）的交易；
  * - 已分类、转账、中性交易保持不变；
  * - 规则命中但分类列表中无同名分类（用户重命名/删除）时保持未分类。
- * 返回新数组，不修改入参。
+ * 自定义规则（custom）优先于内置规则。返回新数组，不修改入参。
  */
-export function applyAutoCategory(transactions: Transaction[], categories: Category[]): Transaction[] {
+export function applyAutoCategory(
+  transactions: Transaction[],
+  categories: Category[],
+  custom?: AutoCategoryRules
+): Transaction[] {
   return transactions.map((tx) => {
     if (tx.categoryId || (tx.type !== 'income' && tx.type !== 'expense')) return tx;
-    const name = guessCategoryName(`${tx.counterparty} ${tx.note}`, tx.type);
+    const name = guessCategoryName(`${tx.counterparty} ${tx.note}`, tx.type, custom);
     if (!name) return tx;
     const id = findCategoryId(categories, tx.type, name);
     if (!id) return tx;

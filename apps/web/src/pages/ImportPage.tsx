@@ -27,6 +27,7 @@ const TYPE_TAG: Record<string, { color: string; label: string }> = {
 export default function ImportPage() {
   const transactions = useStore((s) => s.transactions);
   const categories = useStore((s) => s.categories);
+  const autoRules = useStore((s) => s.autoRules);
   const addTransactions = useStore((s) => s.addTransactions);
   const { message } = AntApp.useApp();
 
@@ -66,7 +67,7 @@ export default function ImportPage() {
     setImporting(true);
     try {
       // 按商户名/备注自动匹配分类（仅未分类的收支交易），可导入后在账单页修改
-      const toAdd = applyAutoCategory(dedup.fresh, categories);
+      const toAdd = applyAutoCategory(dedup.fresh, categories, autoRules);
       const result = await addTransactions(toAdd);
       message.success(`导入完成：新增 ${result.added} 笔，跳过重复 ${result.skipped} 笔`);
       setStep(2);
@@ -90,7 +91,7 @@ export default function ImportPage() {
       title: '自动分类',
       width: 110,
       render: (_: unknown, r: Transaction) => {
-        const name = guessCategoryName(`${r.counterparty} ${r.note}`, r.type);
+        const name = guessCategoryName(`${r.counterparty} ${r.note}`, r.type, autoRules);
         const cat = name ? categories.find((c) => c.kind === (r.type === 'income' ? 'income' : 'expense') && c.name === name) : undefined;
         return cat ? `${cat.icon ?? ''} ${cat.name}` : '-';
       },

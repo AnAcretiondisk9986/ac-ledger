@@ -240,6 +240,13 @@ ELECTRON_BUILDER_BINARIES_MIRROR="https://npmmirror.com/mirrors/electron-builder
 - `store.ts` 新增 `autoCategorizeUncategorized()`：对存量未分类的收支交易调用 `applyAutoCategory`，仅写有变化的交易，返回 `{ updated, unmatched }`。
 - `TransactionsPage.tsx` 工具栏新增「按商户补分类（N）」按钮：Popconfirm 确认后一键补全，结果 message 提示（未匹配笔数）；无未分类交易时按钮禁用。
 
+### 自定义匹配规则面板
+
+- `packages/core/src/auto-category.ts`：`guessCategoryName` / `applyAutoCategory` 新增可选 `custom?: AutoCategoryRules` 参数（`{ income?, expense? }` 分组），**自定义规则优先于内置规则**；新增 `AutoCategoryRules` 类型与「自定义规则优先」测试。
+- `packages/storage/src/repository.ts`：新增 `SettingsFile`（`settings.json`，含 `autoCategoryRules`）与 `getSettings()` / `saveSettings()`；repository.test.ts 新增读写用例。
+- `store.ts`：新增 `autoRules` state（connect/refreshAll 时从 settings.json 加载），`saveAutoRules()` 写入仓库并立即生效；`autoCategorizeUncategorized()` 与导入路径均使用自定义规则。
+- `SettingsPage.tsx` 新增「自动分类规则」卡片：自定义规则表格（类型/分类/关键词 Tags/删除）+ 添加表单（支出/收入、目标分类按类型联动、逗号分隔关键词），内置规则只读展示。规则存数据仓库，多设备同步。
+
 ---
 
 ## 10. 交接给 GPT 时的建议开场

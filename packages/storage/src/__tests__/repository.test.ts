@@ -135,4 +135,21 @@ describe('LedgerRepository', () => {
     expect(accounts.length).toBe(2);
     expect(accounts[1]?.name).toBe('招商银行');
   });
+
+  it('设置保存与读取（自动分类自定义规则）', async () => {
+    const adapter = new MemoryAdapter();
+    const repo = new LedgerRepository(adapter);
+    await repo.initLedger({ name: 't' });
+    expect(await repo.getSettings()).toBeNull();
+
+    await repo.saveSettings({
+      version: 1,
+      autoCategoryRules: { expense: [{ category: '餐饮', keywords: ['沙县小吃'] }] },
+    });
+    const settings = await repo.getSettings();
+    expect(settings?.autoCategoryRules?.expense?.[0]).toEqual({
+      category: '餐饮',
+      keywords: ['沙县小吃'],
+    });
+  });
 });

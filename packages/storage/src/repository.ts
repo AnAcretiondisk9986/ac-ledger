@@ -1,5 +1,6 @@
 import {
   AccountsFile,
+  AutoCategoryRules,
   CategoriesFile,
   Category,
   Account,
@@ -14,6 +15,7 @@ import { StorageAdapter, StorageConflictError, StorageError } from './types.js';
 const LEDGER_PATH = 'ledger.json';
 const ACCOUNTS_PATH = 'accounts.json';
 const CATEGORIES_PATH = 'categories.json';
+const SETTINGS_PATH = 'settings.json';
 
 function monthFile(month: string): string {
   return `transactions/${month}.json`;
@@ -32,6 +34,12 @@ export interface AddResult {
 export interface UpdateResult {
   updated: number;
   skipped: number;
+}
+
+/** settings.json 内容：自动分类自定义规则等 */
+export interface SettingsFile {
+  version: 1;
+  autoCategoryRules?: AutoCategoryRules;
 }
 
 /** 读 JSON 文件；不存在返回 null；损坏抛 StorageError */
@@ -114,6 +122,16 @@ export class LedgerRepository {
   async saveCategories(categories: Category[]): Promise<void> {
     const file: CategoriesFile = { version: 1, categories };
     await this.adapter.writeFile(CATEGORIES_PATH, JSON.stringify(file, null, 2));
+  }
+
+  /** 读取设置（settings.json）；不存在返回 null */
+  async getSettings(): Promise<SettingsFile | null> {
+    return readJson<SettingsFile>(this.adapter, SETTINGS_PATH);
+  }
+
+  /** 保存设置（settings.json） */
+  async saveSettings(settings: SettingsFile): Promise<void> {
+    await this.adapter.writeFile(SETTINGS_PATH, JSON.stringify(settings, null, 2));
   }
 
   /** 读取某月交易 */

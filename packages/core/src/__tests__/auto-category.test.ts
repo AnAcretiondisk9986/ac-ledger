@@ -67,4 +67,22 @@ describe('自动分类', () => {
     );
     expect(out[0]!.categoryId).toBeNull();
   });
+
+  it('自定义规则优先于内置规则', () => {
+    const cats: Category[] = defaultCategories();
+    // 自定义：把「美团外卖」改归到「娱乐」
+    const custom = { expense: [{ category: '娱乐', keywords: ['美团外卖'] }] };
+    expect(guessCategoryName('美团外卖订单', 'expense', custom)).toBe('娱乐');
+    // 自定义未命中时仍走内置规则
+    expect(guessCategoryName('滴滴出行', 'expense', custom)).toBe('交通');
+    // 自定义收入规则只影响收入
+    expect(guessCategoryName('美团外卖', 'income', custom)).toBeNull();
+
+    const out = applyAutoCategory(
+      [tx({ id: '1', date: '2026-08-01T10:00:00+08:00', type: 'expense', amount: 20, counterparty: '美团外卖' })],
+      cats,
+      custom
+    );
+    expect(out[0]!.categoryId).toBe(cats.find((c) => c.name === '娱乐')!.id);
+  });
 });
