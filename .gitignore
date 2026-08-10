@@ -1,0 +1,18 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.DS_Store
+.env
+.env.local
+
+# desktop 构建产物
+apps/desktop/app/
+apps/desktop/release/
+apps/desktop/renderer/
+
+# 隐私：真实账单样本（含用户交易数据，不进公开仓库；本地测试保留）
+packages/bill-import/src/__tests__/fixtures/*.xlsx
+packages/bill-import/src/__tests__/fixtures/*.csv
+
+# AI 会话数据与原始附件（含真实账单，隐私）
+.reasonix/

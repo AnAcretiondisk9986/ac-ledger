@@ -1,0 +1,52 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '发布版本号（如 0.1.1）；留空则使用仓库默认'
+        required: false
+        default: ''
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 测试
+        run: npm test
+
+      - name: 构建 Web
+        run: npm run build -w @ac-ledger/web
+
+      - name: 打包桌面版（NSIS + 便携版）
+        working-directory: apps/desktop
+        run: |
+          node scripts/prepare-app.cjs
+          npx electron-builder --win
+
+      - name: 上传产物到 Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.version != '' && format('v{0}', github.event.inputs.version) || github.ref_name }}
+          draft: true
+          files: |
+            apps/desktop/release/*.exe
+            apps/desktop/release/*.blockmap
+            apps/desktop/release/*.yml
+          fail_on_unmatched_files: false

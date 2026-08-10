@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "noEmit": true,
+    "types": ["vite/client"],
+    "paths": {
+      "@ac-ledger/storage/local-node": ["../../packages/storage/src/local-node.ts"],
+      "@ac-ledger/storage/local": ["../../packages/storage/src/local.ts"],
+      "@ac-ledger/core": ["../../packages/core/src/index.ts"],
+      "@ac-ledger/storage": ["../../packages/storage/src/index.ts"],
+      "@ac-ledger/bill-import": ["../../packages/bill-import/src/index.ts"]
+    }
+  },
+  "include": ["src", "vite.config.ts"]
+}

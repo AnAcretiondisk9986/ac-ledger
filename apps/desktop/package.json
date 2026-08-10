@@ -1,0 +1,64 @@
+{
+  "name": "@ac-ledger/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Ac记账 桌面壳（Electron）",
+  "author": "AcLedger",
+  "main": "main.cjs",
+  "scripts": {
+    "dev": "concurrently -k -n vite,electron -c blue,green \"npm run dev -w @ac-ledger/web\" \"wait-on tcp:127.0.0.1:5173 && electron .\"",
+    "start": "electron .",
+    "smoke": "cross-env SMOKE_TEST=1 electron .",
+    "prepare:app": "node scripts/prepare-app.cjs",
+    "dist": "npm run build -w @ac-ledger/web && node scripts/prepare-app.cjs && electron-builder --win",
+    "pack:dir": "npm run build -w @ac-ledger/web && node scripts/prepare-app.cjs && electron-builder --dir"
+  },
+  "build": {
+    "appId": "com.acledger.desktop",
+    "productName": "Ac记账",
+    "directories": {
+      "app": "app",
+      "output": "release",
+      "buildResources": "assets"
+    },
+    "files": [
+      "main.cjs",
+      "preload.cjs",
+      "fs-ipc.cjs",
+      "renderer/**"
+    ],
+    "win": {
+      "icon": "assets/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "Ac记账"
+    },
+    "electronDownload": {
+      "mirror": "https://npmmirror.com/mirrors/electron/"
+    }
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0",
+    "cross-env": "^7.0.3",
+    "electron": "33.4.11",
+    "electron-builder": "^25.1.8",
+    "wait-on": "^8.0.1"
+  }
+}

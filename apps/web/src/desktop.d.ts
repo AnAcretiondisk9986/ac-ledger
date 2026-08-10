@@ -1,0 +1,18 @@
+import type { FileSystemOps } from '@ac-ledger/storage/local';
+
+/** Electron 桌面端 preload 暴露的全局对象（仅桌面版存在） */
+declare global {
+  interface Window {
+    acLedgerDesktop?: {
+      platform: string;
+      versions: { electron: string; chrome: string; node: string };
+      isDesktop: boolean;
+      /** 用系统默认浏览器打开外部链接 */
+      openExternal(url: string): Promise<void>;
+      /** 本地存储 IPC 桥（FileSystemOps + 数据目录查询） */
+      storage: FileSystemOps & { rootDir(): Promise<string> };
+    };
+  }
+}
+
+export {};

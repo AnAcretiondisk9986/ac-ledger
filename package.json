@@ -1,0 +1,26 @@
+{
+  "name": "ac-ledger",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Ac记账 — 支持桌面端与 Web 端的记账软件，数据存储在 GitHub 仓库 / WebDAV",
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "npm run build -w @ac-ledger/core && npm run build -w @ac-ledger/storage && npm run build -w @ac-ledger/bill-import",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "npm run build -w @ac-ledger/core && tsc --noEmit -p packages/core && tsc --noEmit -p packages/storage && tsc --noEmit -p packages/bill-import"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  },
+  "allowScripts": {
+    "esbuild@0.21.5": true,
+    "electron@33.4.11": true
+  }
+}
