@@ -1,7 +1,7 @@
 # AcLedger（Ac记账）项目交接文档
 
 > 本文件供接手的 AI/开发者使用，内容自包含，无需额外上下文。
-> 生成日期：2026-08-10。最后验证：43 项测试全绿、桌面版/Web 版在线。
+> 生成日期：2026-08-10。最后验证：48 项测试全绿、桌面版/Web 版在线。
 
 ---
 
@@ -50,7 +50,7 @@ scripts/create-repos.mjs  一次性脚本（设备流建仓库，已用过可删
 
 ```bash
 npm install                          # 首次；npm 11 下 postinstall 需 approve（见环境节）
-npm test                             # vitest 全量（当前 43 项）
+npm test                             # vitest 全量（当前 48 项）
 npm run typecheck                    # 全包类型检查
 npm run build                        # 构建三个 package
 
@@ -104,6 +104,7 @@ ELECTRON_BUILDER_BINARIES_MIRROR="https://npmmirror.com/mirrors/electron-builder
 | 14 | 支付宝汇总行解析失败 | 汇总行含逗号（`已支出:455笔,13727.52元`），过 parseCsv 后 join 丢逗号 | 汇总从原始文本行解析（`text.split(/\r?\n/)`） |
 | 15 | GBK 编码 | 支付宝 CSV 是 GBK | `decodeCsvBytes`（UTF-8 含替换符时回退 GBK） |
 | 16 | 微信 xlsx 日期 | exceljs 返回 Date 按本地时区解释 | 取本地字段拼 `YYYY-MM-DD HH:mm:ss`，后缀 `+08:00` |
+| 17 | 微信 xlsx 导入提示“请使用 parseBill 并传入文件字节” | `parseBill` 对二进制先按 UTF-8 解码，再进入 `parseBillText`；xlsx 是 ZIP 二进制，因此被误判并主动报错 | `parseBill` 对 `Uint8Array`/`ArrayBuffer` 在文件名为 `.xlsx/.xls`、字节 ZIP 签名（`PK\\x03\\x04`）或 `kind: 'xlsx'` 时，直接调用 `parseWechatBill` → `readXlsxRows`（ExcelJS）；文本入口 `parseBillText` 仍只接受 CSV 文本并保留提示 |
 
 ---
 
@@ -135,6 +136,8 @@ ELECTRON_BUILDER_BINARIES_MIRROR="https://npmmirror.com/mirrors/electron-builder
 - [x] 核心记账（手动/导入/列表/编辑/统计/设置）
 - [x] 三种存储（本地文件夹 / GitHub 一键连接 / WebDAV 表单）
 - [x] 微信 983 笔 + 支付宝 611 笔真实样本解析（本地 fixture）
+- [x] 微信 XLSX 统一入口：页面将 `File.arrayBuffer()` 转为 `Uint8Array` 后调用 `parseBill(bytes, file.name)`；支持缺少文件名的 ZIP 字节和显式 `kind: 'xlsx'`
+- [x] XLSX 回归验证：动态生成 ExcelJS 工作簿，统一入口成功解析交易数量和金额；bill-import 构建与全包类型检查通过
 - [x] 桌面版白屏问题（含安装版快捷方式指向旧包的坑）
 - [x] 设备流主进程转发、一键登录、打开授权页
 - [x] GitHub Actions：tag 触发打包发布（v0.1.0 已发布）+ Pages 自动部署（已上线）
@@ -150,11 +153,60 @@ ELECTRON_BUILDER_BINARIES_MIRROR="https://npmmirror.com/mirrors/electron-builder
 - [ ] 首次打开数据仓库后验证应用自动初始化（ledger.json 等）——仓库当前为空，应用 connect 时会写入
 
 ### 数据仓库状态
-`ac-ledger-data` 目前为空仓库（应用首次一键连接时自动写入 ledger.json/categories.json）。
+`ac-ledger-data` 已完成首次初始化，当前包含 `ledger.json` / `accounts.json` / `categories.json`，暂无交易月份文件。新仓库会在首次连接时自动初始化。
 
 ---
 
-## 9. 交接给 GPT 时的建议开场
+## 9. 原交接文档之后的变更（2026-08-10）
+
+本节记录读取上一版交接文档后完成的全部修复，当前工作区尚未提交 commit。
+
+### GitHub 一键连接
+
+- `GitHubAdapter.testConnection()` 先读取仓库 `default_branch` 和 `size`，用户未填写分支时自动使用仓库默认分支，不再硬编码 `main`。
+- 空仓库的 `GET /git/ref/heads/*` 返回 HTTP 409 时，结合仓库 `size === 0` 判定为“尚无分支”；首次 `PUT /contents/...` 不携带 `branch`，交由 GitHub 创建默认分支。非空仓库的真实分支缺失仍会报错，避免把半初始化仓库误判为空仓库。
+- 记录 `branchExists`，空仓库阶段的读、列举、删除直接返回空结果；首次成功写入后切换为有分支状态。
+- 将带 `sha`/`already exists` 的 HTTP 422 归类为并发冲突，保留仓库层的拉取、合并、重试逻辑。
+- OAuth 用户响应增加 `login` 必填校验；自动创建数据仓库时使用 `auto_init: true`，确保后续 Contents API 可用。
+
+### WebDAV
+
+- 浏览器端仍使用 `WebDAVAdapter`；桌面端优先使用新增的 `DesktopWebDAVAdapter`，所有请求通过 Electron 主进程 `net.fetch` 执行，绕过渲染进程 CORS 限制。
+- 新增 `packages/storage/src/webdav-desktop.ts`：实现 PROPFIND/GET/PUT/MKCOL/DELETE、命名空间兼容的 PROPFIND XML 解析、ETag 并发条件、401/403/404/412 错误映射，以及缺失基础目录和交易目录的自动创建。
+- 新增 `apps/desktop/webdav-ipc.cjs`：限制请求方法和请求头，校验 HTTP/HTTPS URL 与路径，支持 Basic/Bearer 认证，并限制请求体/响应体最大 50 MB；通过 preload 暴露 `window.acLedgerDesktop.webdav.request`。
+- `WebDAVAdapter` 的连通性检查改为先检查服务根目录，再创建 `basePath`；目录创建使用先检查后 `MKCOL`，不再依赖服务端的递归 MKCOL 扩展。
+- `webdav-ipc.cjs` 已加入 Electron 打包 files 和 `prepare-app.cjs` 复制清单；`npmRebuild: false` 避免打包阶段重建 workspace 原生依赖。
+
+### 本地文件夹模式
+
+- 设置页新增桌面端“选择数据文件夹”按钮，选择结果持久化到 Electron `userData/local-storage.json`；未选择时仍默认使用 `userData/ledger-data`。
+- `fs-ipc.cjs` 新增 `selectRootDir` IPC，读写、列表、删除和测试操作都做根目录边界校验，既支持相对路径也支持位于选定根目录内的绝对路径，防止 IPC 重复拼接绝对路径或目录逃逸。
+- preload 和 `desktop.d.ts` 同步暴露 `selectRootDir`；本地模式配置会保存实际 `rootDir`，Web 端会提示该模式仅桌面版可用。
+
+### 连接状态与初始化
+
+- `LedgerRepository.initLedger()` 改为幂等补齐 `ledger.json`、`accounts.json`、`categories.json`，可修复上次连接中断造成的半初始化仓库，已有账本不会被覆盖。
+- `store.connect()` 在初始化后并行读取账本、账户、分类、交易和月份，一次性提交 ready 状态；通过连接尝试编号忽略过期请求，断开时使进行中的请求失效。
+- `autoConnect()` 使用共享 Promise，避免 React StrictMode 或重复挂载触发两次自动连接和重复初始化。
+- 桌面端类型声明新增 WebDAV 桥和本地根目录选择桥；设置页 GitHub 分支留空时显示“自动使用默认分支”。
+
+### 微信 XLSX 导入
+
+- `ImportPage.tsx` 保持将 `File.arrayBuffer()` 转为 `Uint8Array`，调用 `parseBill(bytes, file.name)`；页面侧不再需要自行识别 XLSX。
+- `parseBill()` 对二进制输入在 `.xlsx/.xls` 扩展名、ZIP 文件头 `PK\\x03\\x04` 或 `kind: 'xlsx'` 命中时直接调用 `parseWechatBill()`；不会再把 XLSX ZIP 先解码成 UTF-8。`parseBillText()` 仍只接受文本，并保留错误提示用于阻止错误调用。
+- 新增统一入口回归测试：动态生成 ExcelJS XLSX，验证交易数量和金额；无文件名和显式 `kind` 的字节调用已通过端到端 smoke 验证。
+
+### 验证与发布状态
+
+- 新增 GitHub 空仓库、半初始化仓库、WebDAV XML/目录创建测试；交接记录的全量测试为 48/48。
+- 最近验证：bill-import 构建、全包 `typecheck`、动态 XLSX 字节端到端解析、`git diff --check` 均通过。当前沙箱直接启动 Vitest 时被 esbuild 的目录权限限制拦截，非测试断言失败。
+- GitHub 私有数据仓库 `ac-ledger-data` 已初始化 `ledger.json`、`accounts.json`、`categories.json`，暂无交易月份文件；真实测试交易已清理。
+- 桌面目录版、安装版和桌面快捷方式此前已覆盖到修复后的构建；桌面版改动后仍必须重新打包并覆盖 `C:\Users\AnAcretiondisk\AppData\Local\Programs\ac-ledger-desktop`。
+- WebDAV 尚未使用真实账号做端到端登录验证，当前仅完成协议模拟测试；接手者需要提供服务地址和凭据后再验收。
+
+---
+
+## 10. 交接给 GPT 时的建议开场
 
 > 请阅读 `HANDOFF.md` 了解 AcLedger 项目全貌。当前任务是：______。
 > 注意：本机 github.com 直连不通需走 127.0.0.1:7890 代理；npm 11 需 approve-scripts；
