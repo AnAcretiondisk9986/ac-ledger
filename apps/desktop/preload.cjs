@@ -21,9 +21,14 @@ contextBridge.exposeInMainWorld('acLedgerDesktop', {
     requestDeviceCode: (clientId, scope) => invoke('ac-ledger:device-flow:code', clientId, scope),
     pollAccessToken: (clientId, deviceCode) => invoke('ac-ledger:device-flow:token', clientId, deviceCode),
   },
+  /** WebDAV 请求由主进程执行，避免渲染进程 CORS 限制 */
+  webdav: {
+    request: (config, request) => invoke('ac-ledger:webdav:request', config, request),
+  },
   /** 本地文件存储（对应 FileSystemOps 接口，路径为数据目录内相对路径） */
   storage: {
     rootDir: () => invoke('ac-ledger:fs:root'),
+    selectRootDir: () => invoke('ac-ledger:fs:select-root'),
     readFile: (rel) => invoke('ac-ledger:fs:read', rel),
     writeFile: (rel, content) => invoke('ac-ledger:fs:write', rel, content),
     listFiles: (rel) => invoke('ac-ledger:fs:list', rel),

@@ -1,28 +1,65 @@
 /**
  * 本地文件存储 IPC：主进程侧注册 fs 操作 handler。
- * 渲染进程只能操作 userData/ledger-data 目录内的相对路径（防逃逸）。
+ * 渲染进程只能操作用户选定的数据目录（默认 userData/ledger-data）内的路径。
  */
-const { ipcMain, app } = require('electron');
+const { ipcMain, app, dialog } = require('electron');
 const fsp = require('node:fs/promises');
+const fs = require('node:fs');
 const path = require('node:path');
 
-function getRootDir() {
-  return path.join(app.getPath('userData'), 'ledger-data');
+let selectedRootDir;
+
+function settingsPath() {
+  return path.join(app.getPath('userData'), 'local-storage.json');
 }
 
-/** 校验相对路径并返回 rootDir 下的绝对路径 */
+function loadSelectedRoot() {
+  if (selectedRootDir !== undefined) return selectedRootDir;
+  try {
+    const value = JSON.parse(fs.readFileSync(settingsPath(), 'utf8'));
+    selectedRootDir = typeof value?.rootDir === 'string' && value.rootDir ? path.resolve(value.rootDir) : null;
+  } catch {
+    selectedRootDir = null;
+  }
+  return selectedRootDir;
+}
+
+function saveSelectedRoot(rootDir) {
+  selectedRootDir = path.resolve(rootDir);
+  fs.mkdirSync(path.dirname(settingsPath()), { recursive: true });
+  fs.writeFileSync(settingsPath(), JSON.stringify({ rootDir: selectedRootDir }, null, 2), 'utf8');
+}
+
+function getRootDir() {
+  return loadSelectedRoot() || path.join(app.getPath('userData'), 'ledger-data');
+}
+
+/** 校验相对/绝对路径并保证它位于 rootDir 内 */
 function resolveSafe(rel) {
-  if (typeof rel !== 'string' || !rel) throw new Error('非法路径');
-  const clean = rel.replace(/\\/g, '/').replace(/^\/+/, '');
-  if (!clean || clean.split('/').some((s) => s === '..')) throw new Error(`非法路径: ${rel}`);
-  const abs = path.join(getRootDir(), ...clean.split('/'));
   const root = path.resolve(getRootDir());
+  if (typeof rel !== 'string' || !rel) throw new Error('非法路径');
+  const abs = path.isAbsolute(rel)
+    ? path.resolve(rel)
+    : path.resolve(root, ...rel.replace(/\\/g, '/').split('/').filter(Boolean));
   if (abs !== root && !abs.startsWith(root + path.sep)) throw new Error(`非法路径: ${rel}`);
   return abs;
 }
 
 function registerFsIpc() {
   ipcMain.handle('ac-ledger:fs:root', () => getRootDir());
+
+  ipcMain.handle('ac-ledger:fs:select-root', async () => {
+    const result = await dialog.showOpenDialog({
+      title: '选择 Ac记账数据文件夹',
+      properties: ['openDirectory', 'createDirectory'],
+    });
+    if (result.canceled || !result.filePaths[0]) return null;
+    const root = path.resolve(result.filePaths[0]);
+    await fsp.mkdir(root, { recursive: true });
+    await fsp.access(root, fs.constants.R_OK | fs.constants.W_OK);
+    saveSelectedRoot(root);
+    return root;
+  });
 
   ipcMain.handle('ac-ledger:fs:read', async (_e, rel) => {
     try {
@@ -63,8 +100,11 @@ function registerFsIpc() {
     }
   });
 
-  ipcMain.handle('ac-ledger:fs:test', async () => {
-    await fsp.mkdir(getRootDir(), { recursive: true });
+  ipcMain.handle('ac-ledger:fs:test', async (_e, absDir) => {
+    const root = getRootDir();
+    const target = absDir ? resolveSafe(absDir) : root;
+    await fsp.mkdir(target, { recursive: true });
+    await fsp.access(target, fs.constants.R_OK | fs.constants.W_OK);
   });
 }
 

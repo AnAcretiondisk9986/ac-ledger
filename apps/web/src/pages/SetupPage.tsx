@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Card, Form, Input, Radio, Button, Alert, Typography, Space, Divider } from 'antd';
-import { GithubOutlined, CloudServerOutlined, FolderOutlined, LoginOutlined } from '@ant-design/icons';
+import { GithubOutlined, CloudServerOutlined, FolderOutlined, FolderOpenOutlined, LoginOutlined } from '@ant-design/icons';
 import { StorageConfig, StorageKind, loadSavedConfig, useStore } from '../store';
 import OAuthDeviceModal from './OAuthDeviceModal';
 
@@ -11,6 +11,7 @@ interface FormValues {
   token?: string;
   branch?: string;
   basePath?: string;
+  rootDir?: string;
   url?: string;
   username?: string;
   password?: string;
@@ -29,7 +30,7 @@ function toStorageConfig(values: FormValues): StorageConfig {
     };
   }
   if (values.kind === 'local') {
-    return { kind: 'local', rootDir: '' }; // 实际目录由主进程决定
+    return { kind: 'local', rootDir: values.rootDir ?? '' };
   }
   return {
     kind: 'webdav',
@@ -50,11 +51,32 @@ export default function SetupPage({ standalone = false }: { standalone?: boolean
   const connectGithubOneClick = useStore((s) => s.connectGithubOneClick);
   const [saved] = useState(() => loadSavedConfig());
   const [form] = Form.useForm<FormValues>();
+  const [localRoot, setLocalRoot] = useState(saved?.kind === 'local' ? saved.rootDir : '');
+  const desktopAvailable = typeof window !== 'undefined' && !!window.acLedgerDesktop;
   const kind = Form.useWatch('kind', form) ?? saved?.kind ?? 'github';
+
+  useEffect(() => {
+    if (kind !== 'local') return;
+    const storage = window.acLedgerDesktop?.storage;
+    if (!storage) return;
+    void storage.rootDir().then((root) => {
+      setLocalRoot(root);
+      form.setFieldValue('rootDir', root);
+    });
+  }, [form, kind]);
+
+  const chooseLocalRoot = async () => {
+    const storage = window.acLedgerDesktop?.storage;
+    if (!storage) return;
+    const root = await storage.selectRootDir();
+    if (!root) return;
+    setLocalRoot(root);
+    form.setFieldValue('rootDir', root);
+  };
 
   const initialValues: FormValues = saved
     ? { ...saved, password: saved.kind === 'webdav' ? (saved.password ?? '') : '' }
-    : { kind: 'github', branch: 'main' };
+    : { kind: 'github' };
 
   const onFinish = async (values: FormValues) => {
     setLoading(true);
@@ -82,13 +104,23 @@ export default function SetupPage({ standalone = false }: { standalone?: boolean
       </Form.Item>
 
       {kind === 'local' && (
-        <Alert
-          type="info"
-          showIcon
-          style={{ marginBottom: 16 }}
-          message="本地模式（离线可用）"
-          description="数据保存在本机应用数据目录（userData/ledger-data），不经过任何网络服务。仅桌面版支持。"
-        />
+        <>
+          <Alert
+            type="info"
+            showIcon
+            style={{ marginBottom: 16 }}
+            message="本地模式（离线可用）"
+            description={desktopAvailable ? '数据保存在你选择的本机文件夹中，不经过任何网络服务。' : '本地文件夹模式仅桌面版支持，请使用桌面应用连接。'}
+          />
+          <Form.Item name="rootDir" label="数据文件夹" rules={[{ required: true, message: '请选择数据文件夹' }]}>
+            <Space.Compact block>
+              <Input value={localRoot} readOnly placeholder="请选择文件夹" />
+              <Button disabled={!desktopAvailable} icon={<FolderOpenOutlined />} onClick={() => void chooseLocalRoot()}>
+                选择
+              </Button>
+            </Space.Compact>
+          </Form.Item>
+        </>
       )}
 
       {kind === 'github' ? (
@@ -135,8 +167,8 @@ export default function SetupPage({ standalone = false }: { standalone?: boolean
             <Input.Password placeholder="github_pat_xxx 或 gho_xxx" />
           </Form.Item>
           <Space.Compact block>
-            <Form.Item name="branch" label="分支" style={{ flex: 1 }} initialValue="main">
-              <Input placeholder="main" />
+            <Form.Item name="branch" label="分支" style={{ flex: 1 }}>
+              <Input placeholder="留空自动使用默认分支" />
             </Form.Item>
             <Form.Item name="basePath" label="数据目录" style={{ flex: 1 }}>
               <Input placeholder="可选，如 data" />
@@ -206,7 +238,7 @@ export default function SetupPage({ standalone = false }: { standalone?: boolean
             Ac记账
           </Typography.Title>
           <Typography.Paragraph type="secondary">
-            数据存储在 GitHub 仓库或 WebDAV 网盘，无需服务器。首次使用请配置数据源。
+            数据可存储在 GitHub 仓库、WebDAV 网盘或本机文件夹，首次使用请配置数据源。
           </Typography.Paragraph>
           <Form form={form} layout="vertical" initialValues={initialValues} onFinish={onFinish}>
             {formContent}
