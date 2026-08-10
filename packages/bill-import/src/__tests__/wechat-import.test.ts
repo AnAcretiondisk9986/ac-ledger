@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import ExcelJS from 'exceljs';
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { parseWechatBill, parseWechatTextRows } from '../index.js';
+import { parseBill, parseWechatBill, parseWechatTextRows } from '../index.js';
 import { parseCsv } from '../csv.js';
 
 const FIXTURE = fileURLToPath(new URL('./fixtures/wechat-bill-sample.xlsx', import.meta.url));
@@ -100,5 +101,22 @@ describe.skipIf(!HAS_FIXTURE)('真实 xlsx 样本（983 笔，本地 fixture）'
     // refId 全部唯一（微信交易单号不重复）
     const refIds = result.transactions.map((t) => t.refId);
     expect(new Set(refIds).size).toBe(refIds.length);
+  });
+
+});
+
+describe('微信 xlsx 统一入口', () => {
+  it('接收 xlsx 字节并转给微信解析器', async () => {
+    const workbook = new ExcelJS.Workbook();
+    workbook.addWorksheet('Sheet1').addRows([
+      ['微信支付账单明细'],
+      ['共1笔记录'],
+      ['交易时间', '交易类型', '交易对方', '商品', '收/支', '金额(元)', '支付方式', '当前状态', '交易单号', '商户单号', '备注'],
+      ['2026-08-10 10:00:00', '商户消费', '测试商户', '测试', '支出', '1.23', '零钱', '支付成功', 'xlsx-test-1', '/', '/'],
+    ]);
+    const bytes = new Uint8Array(await workbook.xlsx.writeBuffer());
+    const result = await parseBill(bytes, 'wechat.xlsx');
+    expect(result.transactions).toHaveLength(1);
+    expect(result.transactions[0]?.amount).toBe(1.23);
   });
 });

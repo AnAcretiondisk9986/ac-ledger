@@ -5,7 +5,7 @@ import { BillParseOptions, BillParseResult } from './types.js';
 import { decodeCsvBytes, parseCsv, stripBom } from './csv.js';
 import { readXlsxRows } from './xlsx-reader.js';
 import { parseAlipayRows, parseAlipaySummary, rowFromAlipayCells } from './alipay/parser.js';
-import { parseWechatTextRows } from './wechat/bill.js';
+import { parseWechatBill, parseWechatTextRows } from './wechat/bill.js';
 
 export type {
   BillParseOptions,
@@ -51,6 +51,11 @@ export async function parseBill(
 ): Promise<BillParseResult> {
   if (typeof data !== 'string') {
     const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
+    // xlsx 是 ZIP 二进制，不能先解码成文本；直接交给 ExcelJS 读取工作表。
+    const isZip = bytes.length >= 4 && bytes[0] === 0x50 && bytes[1] === 0x4b && bytes[2] === 0x03 && bytes[3] === 0x04;
+    if (opts.kind === 'xlsx' || (filename && /\.(xlsx|xls)$/i.test(filename)) || isZip) {
+      return parseWechatBill(bytes, filename, opts);
+    }
     // 先尝试 UTF-8（微信）；含替换符时按 GBK（支付宝）解码
     const utf8 = new TextDecoder('utf-8', { fatal: false }).decode(bytes);
     const text = utf8.includes('\uFFFD') ? decodeCsvBytes(bytes) : utf8;
