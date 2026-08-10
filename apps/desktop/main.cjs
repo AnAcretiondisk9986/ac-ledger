@@ -87,6 +87,12 @@ function createWindow() {
   });
   mainWindow = win;
 
+  // 点击窗口关闭按钮（ControlBox X）→ 彻底退出应用（含所有子进程），不留后台残留
+  win.on('close', () => {
+    log('window close: quitting app');
+    app.quit();
+  });
+
   // 页面就绪后再显示窗口，避免白屏闪烁
   win.once('ready-to-show', () => {
     log('ready-to-show');
