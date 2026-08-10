@@ -7,6 +7,7 @@ const { app, BrowserWindow, ipcMain, shell, net } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const { registerFsIpc } = require('./fs-ipc.cjs');
+const { registerWebDAVIpc } = require('./webdav-ipc.cjs');
 
 // 禁用硬件加速：规避 Windows 上 GPU 进程崩溃导致的纯白窗口（常见于驱动/远程桌面/虚拟机环境）
 app.disableHardwareAcceleration();
@@ -216,6 +217,7 @@ if (!gotLock) {
 
   app.whenReady().then(() => {
     registerFsIpc();
+    registerWebDAVIpc();
     registerShellIpc();
     registerDeviceFlowIpc();
     createWindow();

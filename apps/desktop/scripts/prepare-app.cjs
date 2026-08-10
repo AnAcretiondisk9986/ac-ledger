@@ -26,7 +26,7 @@ async function main() {
   await fsp.mkdir(path.join(APP_DIR, 'renderer'), { recursive: true });
 
   await fsp.writeFile(path.join(APP_DIR, 'package.json'), JSON.stringify(APP_PACKAGE, null, 2));
-  for (const f of ['main.cjs', 'preload.cjs', 'fs-ipc.cjs']) {
+  for (const f of ['main.cjs', 'preload.cjs', 'fs-ipc.cjs', 'webdav-ipc.cjs']) {
     await fsp.copyFile(path.join(ROOT, f), path.join(APP_DIR, f));
   }
   await fsp.cp(WEB_DIST, path.join(APP_DIR, 'renderer'), { recursive: true });

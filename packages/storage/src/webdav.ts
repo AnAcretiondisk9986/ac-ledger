@@ -51,6 +51,7 @@ export class WebDAVAdapter implements StorageAdapter {
   }
 
   private async ensureDir(path: string): Promise<void> {
+    if (!path) return;
     const dirs: string[] = [];
     let cur = path;
     while (cur) {
@@ -62,9 +63,11 @@ export class WebDAVAdapter implements StorageAdapter {
     for (const d of dirs) {
       if (this.ensuredDirs.has(d)) continue;
       try {
-        await this.client.createDirectory(d, { recursive: true });
-      } catch {
-        // 目录已存在时忽略
+        if (!(await this.client.exists(d))) {
+          await this.client.createDirectory(d);
+        }
+      } catch (e) {
+        this.wrapError(e, `创建目录 ${d}`);
       }
       this.ensuredDirs.add(d);
     }
@@ -136,10 +139,12 @@ export class WebDAVAdapter implements StorageAdapter {
 
   async testConnection(): Promise<void> {
     try {
-      await this.client.getDirectoryContents(this.fullPath('') || '/');
+      // 先验证 WebDAV 服务根目录；basePath 可以是首次使用时尚不存在的新目录。
+      await this.client.getDirectoryContents('/');
     } catch (e) {
       this.wrapError(e, '连通性检查');
     }
+    await this.ensureDir(this.fullPath(''));
   }
 
   private dirOf(path: string): string {
