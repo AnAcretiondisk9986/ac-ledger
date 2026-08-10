@@ -34,8 +34,21 @@ jobs:
       - name: 构建 Web
         run: npm run build -w @ac-ledger/web
 
+      - name: 解析发布版本（来自 tag 或手动输入）
+        id: version
+        shell: bash
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            ver="${{ github.event.inputs.version }}"
+          else
+            ver="${GITHUB_REF_NAME#v}"
+          fi
+          echo "version=${ver}" >> "$GITHUB_OUTPUT"
+
       - name: 打包桌面版（NSIS + 便携版）
         working-directory: apps/desktop
+        env:
+          AC_LEDGER_VERSION: ${{ steps.version.outputs.version }}
         run: |
           node scripts/prepare-app.cjs
           npx electron-builder --win

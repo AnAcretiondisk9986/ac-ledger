@@ -11,9 +11,12 @@ const ROOT = path.join(__dirname, '..');
 const APP_DIR = path.join(ROOT, 'app');
 const WEB_DIST = path.join(ROOT, '..', 'web', 'dist');
 
+// 版本号优先取环境变量（CI 从 tag/输入解析），本地缺省 0.1.0
+const VERSION = process.env.AC_LEDGER_VERSION || '0.1.0';
+
 const APP_PACKAGE = {
   name: 'ac-ledger-desktop',
-  version: '0.1.0',
+  version: VERSION,
   description: 'Ac记账 桌面版',
   author: 'AcLedger',
   main: 'main.cjs',
