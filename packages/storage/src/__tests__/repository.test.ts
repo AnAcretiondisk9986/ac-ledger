@@ -32,6 +32,20 @@ describe('LedgerRepository', () => {
     // 幂等：再次 init 返回同一账本
     const again = await repo.initLedger({ name: '另一个' });
     expect(again.ledger.id).toBe(ledger.ledger.id);
+    expect(await adapter.readFile('accounts.json')).toContain('"accounts": []');
+  });
+
+  it('修复只有 ledger.json 的半初始化仓库', async () => {
+    const adapter = new MemoryAdapter();
+    const repo = new LedgerRepository(adapter);
+    await adapter.writeFile('ledger.json', JSON.stringify({
+      version: 1,
+      ledger: { id: 'ledger-existing', name: '旧账本', currency: 'CNY', createdAt: '', updatedAt: '' },
+    }));
+    const ledger = await repo.initLedger({ name: '不应覆盖' });
+    expect(ledger.ledger.id).toBe('ledger-existing');
+    expect((await repo.getCategories()).length).toBe(14);
+    expect(await adapter.readFile('accounts.json')).toContain('"accounts": []');
   });
 
   it('按 id/refId 去重写入', async () => {

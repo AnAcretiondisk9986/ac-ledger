@@ -53,27 +53,37 @@ export class LedgerRepository {
 
   /** 初始化账本：不存在 ledger.json 时创建默认账本+分类 */
   async initLedger(opts: InitLedgerOptions): Promise<LedgerFile> {
-    const existing = await this.getLedger();
-    if (existing) return existing;
-    const now = new Date().toISOString();
-    const ledgerFile: LedgerFile = {
-      version: 1,
-      ledger: {
-        id: `ledger-${uuid().slice(0, 8)}`,
-        name: opts.name,
-        currency: opts.currency ?? 'CNY',
-        createdAt: now,
-        updatedAt: now,
-      },
-    };
-    await this.adapter.writeFile(LEDGER_PATH, JSON.stringify(ledgerFile, null, 2), {
-      message: 'ac-ledger: init ledger',
-    });
-    // 首次初始化同时写入默认分类
-    const catFile: CategoriesFile = { version: 1, categories: defaultCategories() };
-    await this.adapter.writeFile(CATEGORIES_PATH, JSON.stringify(catFile, null, 2), {
-      message: 'ac-ledger: init categories',
-    });
+    let ledgerFile = await this.getLedger();
+    if (!ledgerFile) {
+      const now = new Date().toISOString();
+      ledgerFile = {
+        version: 1,
+        ledger: {
+          id: `ledger-${uuid().slice(0, 8)}`,
+          name: opts.name,
+          currency: opts.currency ?? 'CNY',
+          createdAt: now,
+          updatedAt: now,
+        },
+      };
+      await this.adapter.writeFile(LEDGER_PATH, JSON.stringify(ledgerFile, null, 2), {
+        message: 'ac-ledger: init ledger',
+      });
+    }
+
+    // 每次连接都补齐基础文件，可修复上次中断留下的半初始化仓库。
+    if ((await readJson<AccountsFile>(this.adapter, ACCOUNTS_PATH)) === null) {
+      const accountFile: AccountsFile = { version: 1, accounts: [] };
+      await this.adapter.writeFile(ACCOUNTS_PATH, JSON.stringify(accountFile, null, 2), {
+        message: 'ac-ledger: init accounts',
+      });
+    }
+    if ((await readJson<CategoriesFile>(this.adapter, CATEGORIES_PATH)) === null) {
+      const catFile: CategoriesFile = { version: 1, categories: defaultCategories() };
+      await this.adapter.writeFile(CATEGORIES_PATH, JSON.stringify(catFile, null, 2), {
+        message: 'ac-ledger: init categories',
+      });
+    }
     return ledgerFile;
   }
 

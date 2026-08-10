@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { Account, Category, LedgerFile, Transaction } from '@ac-ledger/core';
 import {
   AddResult,
+  DesktopWebDAVAdapter,
   GitHubAdapter,
   LedgerRepository,
   StorageAdapter,
@@ -27,6 +28,9 @@ export type StorageConfig =
 
 const CONFIG_KEY = 'ac-ledger:storage-config';
 
+let connectionAttempt = 0;
+let autoConnectPromise: Promise<void> | null = null;
+
 export function loadSavedConfig(): StorageConfig | null {
   try {
     const raw = localStorage.getItem(CONFIG_KEY);
@@ -48,11 +52,23 @@ export function createAdapter(config: StorageConfig): StorageAdapter {
       owner: config.owner ?? '',
       repo: config.repo ?? '',
       token: config.token ?? '',
-      branch: config.branch || 'main',
+      branch: config.branch || undefined,
       basePath: config.basePath || '',
     });
   }
   if (config.kind === 'webdav') {
+    const bridge = typeof window !== 'undefined' ? window.acLedgerDesktop?.webdav : undefined;
+    if (bridge) {
+      return new DesktopWebDAVAdapter(
+        {
+          url: config.url ?? '',
+          username: config.username || undefined,
+          password: config.password || undefined,
+          basePath: config.basePath || '',
+        },
+        bridge
+      );
+    }
     return new WebDAVAdapter({
       url: config.url ?? '',
       username: config.username || undefined,
@@ -107,6 +123,7 @@ export const useStore = create<AppState>((set, get) => ({
   months: [],
 
   async connect(config) {
+    const attempt = ++connectionAttempt;
     set({ status: 'connecting', error: null, config });
     try {
       // local 模式：数据目录由主进程决定（userData/ledger-data）
@@ -118,13 +135,32 @@ export const useStore = create<AppState>((set, get) => ({
       const adapter = createAdapter(effective);
       await adapter.testConnection();
       const repo = new LedgerRepository(adapter);
-      const ledger = await repo.initLedger({ name: '我的账本' });
+      await repo.initLedger({ name: '我的账本' });
+      const [ledger, accounts, categories, transactions, months] = await Promise.all([
+        repo.getLedger(),
+        repo.getAccounts(),
+        repo.getCategories(),
+        repo.getTransactions(),
+        repo.listMonths(),
+      ]);
+      if (attempt !== connectionAttempt) return;
       saveConfig(effective);
-      set({ repo, ledger, status: 'ready' });
-      await get().refreshAll();
+      set({
+        config: effective,
+        repo,
+        ledger,
+        accounts,
+        categories,
+        transactions,
+        months,
+        status: 'ready',
+        error: null,
+      });
     } catch (e) {
       const message = e instanceof StorageError || e instanceof Error ? e.message : String(e);
-      set({ status: 'error', error: message });
+      if (attempt === connectionAttempt) {
+        set({ status: 'error', error: message, repo: null, ledger: null });
+      }
       throw e;
     }
   },
@@ -148,6 +184,7 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   disconnect() {
+    connectionAttempt++;
     saveConfig(null);
     set({
       status: 'unconfigured',
@@ -214,12 +251,16 @@ export const useStore = create<AppState>((set, get) => ({
 
 /** 启动时尝试用保存的配置自动连接 */
 export async function autoConnect(): Promise<void> {
-  const saved = loadSavedConfig();
-  if (!saved) return;
-  const { connect } = useStore.getState();
-  try {
-    await connect(saved);
-  } catch {
-    // 失败保留错误状态，用户可重新配置
-  }
+  if (autoConnectPromise) return autoConnectPromise;
+  autoConnectPromise = (async () => {
+    const saved = loadSavedConfig();
+    if (!saved) return;
+    const { connect } = useStore.getState();
+    try {
+      await connect(saved);
+    } catch {
+      // 失败保留错误状态，用户可重新配置
+    }
+  })();
+  return autoConnectPromise;
 }
