@@ -234,6 +234,12 @@ ELECTRON_BUILDER_BINARIES_MIRROR="https://npmmirror.com/mirrors/electron-builder
 - `ImportPage.tsx`：预览表格新增「自动分类」列展示猜测结果；确认导入时先 `applyAutoCategory` 再入库；解析成功提示中注明自动分类。
 - 测试：`auto-category.test.ts` 5 个用例（全量 54 项测试）。
 
+### 存量交易一键补分类
+
+- `packages/storage/src/repository.ts` 新增 `updateTransactions(list)`：跨月分片批量更新（按 id 定位、一次读一次写），新增 `UpdateResult` 接口；repository.test.ts 新增跨月批量更新用例（全量 55 项测试）。
+- `store.ts` 新增 `autoCategorizeUncategorized()`：对存量未分类的收支交易调用 `applyAutoCategory`，仅写有变化的交易，返回 `{ updated, unmatched }`。
+- `TransactionsPage.tsx` 工具栏新增「按商户补分类（N）」按钮：Popconfirm 确认后一键补全，结果 message 提示（未匹配笔数）；无未分类交易时按钮禁用。
+
 ---
 
 ## 10. 交接给 GPT 时的建议开场

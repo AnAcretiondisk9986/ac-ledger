@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Card, Table, Select, Input, Tag, Space, Button, Modal, Popconfirm, App as AntApp, Typography } from 'antd';
-import { DeleteOutlined, EditOutlined } from '@ant-design/icons';
+import { DeleteOutlined, EditOutlined, TagsOutlined } from '@ant-design/icons';
 import { formatMoney, monthKey, summarize } from '@ac-ledger/core';
 import { useStore } from '../store';
 import TransactionForm, { toFormValues } from './TransactionForm';
@@ -19,7 +19,10 @@ export default function TransactionsPage() {
   const categories = useStore((s) => s.categories);
   const removeTransaction = useStore((s) => s.removeTransaction);
   const updateTransaction = useStore((s) => s.updateTransaction);
+  const autoCategorizeUncategorized = useStore((s) => s.autoCategorizeUncategorized);
   const { message } = AntApp.useApp();
+
+  const [autoCatLoading, setAutoCatLoading] = useState(false);
 
   const [month, setMonth] = useState<string | undefined>();
   const [typeFilter, setTypeFilter] = useState<string>('all');
@@ -49,6 +52,28 @@ export default function TransactionsPage() {
   }, [transactions, month, typeFilter, keyword]);
 
   const summary = useMemo(() => summarize(filtered), [filtered]);
+
+  // 未分类的收支交易数（一键补分类的待处理量）
+  const uncategorizedCount = useMemo(
+    () => transactions.filter((t) => !t.categoryId && (t.type === 'income' || t.type === 'expense')).length,
+    [transactions]
+  );
+
+  const handleAutoCategorize = async () => {
+    setAutoCatLoading(true);
+    try {
+      const r = await autoCategorizeUncategorized();
+      if (r.updated === 0) {
+        message.info(r.unmatched > 0 ? `规则未命中，仍有 ${r.unmatched} 笔未分类` : '没有未分类的收支交易');
+      } else {
+        message.success(`已按商户名补全 ${r.updated} 笔分类${r.unmatched > 0 ? `，未匹配 ${r.unmatched} 笔` : ''}`);
+      }
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : '操作失败');
+    } finally {
+      setAutoCatLoading(false);
+    }
+  };
 
   const columns = [
     { title: '时间', dataIndex: 'date', width: 170, render: (v: string) => v.replace('T', ' ').slice(0, 16) },
@@ -139,6 +164,15 @@ export default function TransactionsPage() {
             ]}
           />
           <Input.Search placeholder="搜索对方/备注/单号" allowClear style={{ width: 220 }} onSearch={setKeyword} />
+          <Popconfirm
+            title="按商户名自动匹配分类？"
+            description="仅未分类的收支交易会被处理，未匹配的保持不变。"
+            onConfirm={() => void handleAutoCategorize()}
+          >
+            <Button icon={<TagsOutlined />} loading={autoCatLoading} disabled={uncategorizedCount === 0}>
+              按商户补分类{uncategorizedCount > 0 ? `（${uncategorizedCount}）` : ''}
+            </Button>
+          </Popconfirm>
         </Space>
       }
     >

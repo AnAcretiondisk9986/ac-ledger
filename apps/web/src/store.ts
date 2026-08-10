@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { Account, Category, LedgerFile, Transaction } from '@ac-ledger/core';
+import { Account, Category, LedgerFile, Transaction, applyAutoCategory } from '@ac-ledger/core';
 import {
   AddResult,
   DesktopWebDAVAdapter,
@@ -105,6 +105,8 @@ interface AppState {
   /** 全量刷新（账本/账户/分类/交易） */
   refreshAll(): Promise<void>;
   addTransactions(list: Transaction[]): Promise<AddResult>;
+  /** 存量未分类的收支交易按商户名自动补分类，返回 { updated, unmatched } */
+  autoCategorizeUncategorized(): Promise<{ updated: number; unmatched: number }>;
   updateTransaction(tx: Transaction): Promise<void>;
   removeTransaction(id: string): Promise<void>;
   saveAccounts(accounts: Account[]): Promise<void>;
@@ -218,6 +220,21 @@ export const useStore = create<AppState>((set, get) => ({
     const result = await repo.addTransactions(list);
     await get().refreshAll();
     return result;
+  },
+
+  async autoCategorizeUncategorized() {
+    const { repo, transactions, categories } = get();
+    if (!repo) throw new Error('尚未连接数据源');
+    const uncategorized = transactions.filter(
+      (t) => !t.categoryId && (t.type === 'income' || t.type === 'expense')
+    );
+    if (uncategorized.length === 0) return { updated: 0, unmatched: 0 };
+    const after = applyAutoCategory(transactions, categories);
+    const byId = new Map(transactions.map((t) => [t.id, t]));
+    const changed = after.filter((t) => byId.get(t.id)?.categoryId !== t.categoryId);
+    if (changed.length > 0) await repo.updateTransactions(changed);
+    await get().refreshAll();
+    return { updated: changed.length, unmatched: uncategorized.length - changed.length };
   },
 
   async updateTransaction(tx) {

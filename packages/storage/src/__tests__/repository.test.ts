@@ -99,6 +99,30 @@ describe('LedgerRepository', () => {
     expect(month.length).toBe(0);
   });
 
+  it('批量更新跨月分片', async () => {
+    const adapter = new MemoryAdapter();
+    const repo = new LedgerRepository(adapter);
+    await repo.initLedger({ name: 't' });
+
+    await repo.addTransactions([
+      tx({ id: '1', date: '2026-07-15T10:00:00+08:00', amount: 1 }),
+      tx({ id: '2', date: '2026-08-15T10:00:00+08:00', amount: 2 }),
+      tx({ id: '3', date: '2026-08-20T10:00:00+08:00', amount: 3 }),
+    ]);
+
+    const r = await repo.updateTransactions([
+      { ...tx({ id: '1', date: '2026-07-15T10:00:00+08:00', amount: 1 }), categoryId: 'cat-1' },
+      { ...tx({ id: '2', date: '2026-08-15T10:00:00+08:00', amount: 2 }), categoryId: 'cat-2' },
+      tx({ id: '9', date: '2026-08-21T10:00:00+08:00', amount: 9 }), // 不存在，跳过
+    ]);
+    expect(r).toEqual({ updated: 2, skipped: 1 });
+
+    expect((await repo.getMonthTransactions('2026-07'))[0]?.categoryId).toBe('cat-1');
+    const aug = await repo.getMonthTransactions('2026-08');
+    expect(aug.find((t) => t.id === '2')?.categoryId).toBe('cat-2');
+    expect(aug.find((t) => t.id === '3')?.categoryId).toBeNull();
+  });
+
   it('账户保存与读取', async () => {
     const adapter = new MemoryAdapter();
     const repo = new LedgerRepository(adapter);

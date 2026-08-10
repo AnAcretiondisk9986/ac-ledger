@@ -29,6 +29,11 @@ export interface AddResult {
   skipped: number;
 }
 
+export interface UpdateResult {
+  updated: number;
+  skipped: number;
+}
+
 /** 读 JSON 文件；不存在返回 null；损坏抛 StorageError */
 async function readJson<T>(adapter: StorageAdapter, path: string): Promise<T | null> {
   const raw = await adapter.readFile(path);
@@ -170,6 +175,26 @@ export class LedgerRepository {
   async updateTransaction(tx: Transaction): Promise<void> {
     const month = tx.date.slice(0, 7);
     await this.mergeMonth(month, [tx], 'update');
+  }
+
+  /** 批量更新（按 id 定位；不存在则忽略），跨月分片一次读一次写 */
+  async updateTransactions(list: Transaction[]): Promise<UpdateResult> {
+    if (list.length === 0) return { updated: 0, skipped: 0 };
+    const byMonth = new Map<string, Transaction[]>();
+    for (const tx of list) {
+      const month = tx.date.slice(0, 7);
+      const arr = byMonth.get(month) ?? [];
+      arr.push(tx);
+      byMonth.set(month, arr);
+    }
+    let updated = 0;
+    let skipped = 0;
+    for (const [month, txs] of byMonth) {
+      const r = await this.mergeMonth(month, txs, 'update');
+      updated += r.added;
+      skipped += r.skipped;
+    }
+    return { updated, skipped };
   }
 
   /** 删除一笔交易 */
