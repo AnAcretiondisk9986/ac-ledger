@@ -36,8 +36,9 @@ function Shell() {
   const current = menuItems.find((m) => location.pathname.startsWith(m.key))?.key ?? '/add';
 
   return (
-    <Layout style={{ minHeight: '100vh' }}>
-      <Sider theme="dark" width={180}>
+    <Layout style={{ height: '100vh', overflow: 'hidden' }}>
+      {/* 侧栏固定在窗口左侧，不随内容滚动 */}
+      <Sider theme="dark" width={180} style={{ overflow: 'auto' }}>
         <div style={{ color: '#fff', fontSize: 18, fontWeight: 700, padding: '16px 24px' }}>Ac记账</div>
         <Menu
           theme="dark"
@@ -47,7 +48,7 @@ function Shell() {
           onClick={({ key }) => navigate(key)}
         />
       </Sider>
-      <Layout>
+      <Layout style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
         <Header
           style={{
             background: '#fff',
@@ -55,6 +56,7 @@ function Shell() {
             justifyContent: 'flex-end',
             alignItems: 'center',
             paddingInline: 24,
+            flexShrink: 0,
           }}
         >
           <Typography.Text type="secondary">数据源：{useStore((s) => s.config)?.kind === 'github' ? 'GitHub 仓库' : useStore((s) => s.config)?.kind === 'webdav' ? 'WebDAV' : '未配置'}</Typography.Text>
@@ -69,7 +71,7 @@ function Shell() {
             断开
           </Button>
         </Header>
-        <Content style={{ padding: 24 }}>
+        <Content style={{ padding: 24, overflow: 'auto', flex: 1 }}>
           <Routes>
             <Route path="/setup" element={<SetupPage />} />
             <Route path="/add" element={<AddPage />} />

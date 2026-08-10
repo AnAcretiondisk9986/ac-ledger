@@ -1,0 +1,53 @@
+/* 全局应用样式：消除"网页感"，向原生桌面应用靠拢 */
+
+/* 铺满视口、去除浏览器默认 body 外边距（否则 100vh 布局会多出 8px 产生滚动） */
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  /* 禁用页面文本选中（输入框/文本域保留），避免网页式蓝色高亮 */
+  user-select: none;
+  -webkit-user-select: none;
+  /* 禁用滚动链与边缘回弹，滚动只发生在内容区 */
+  overscroll-behavior: none;
+}
+
+/* 表单控件内文字仍可选中/复制 */
+input,
+textarea,
+[contenteditable='true'] {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+/* 禁止拖拽元素（图片/链接），防浏览器式拖拽行为 */
+* {
+  -webkit-user-drag: none;
+}
+
+/* 细窄圆角滚动条，替换浏览器默认宽滚动条 */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.22);
+  border-radius: 5px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.38);
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}

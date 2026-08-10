@@ -3,7 +3,7 @@
  * - 开发模式：加载 @ac-ledger/web 的 vite dev server（http://localhost:5173）
  * - 生产模式：加载本地 renderer/index.html（file://，应用使用 HashRouter 无需服务器）
  */
-const { app, BrowserWindow, ipcMain, shell, net } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, net, Menu } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const { registerFsIpc } = require('./fs-ipc.cjs');
@@ -88,6 +88,9 @@ function createWindow() {
   });
   mainWindow = win;
 
+  // 禁用页面缩放（Ctrl+滚轮 / 触控板捏合），保持桌面应用观感
+  win.webContents.setVisualZoomLevelLimits(1, 1);
+
   // 点击窗口关闭按钮（ControlBox X）→ 彻底退出应用（含所有子进程），不留后台残留
   win.on('close', () => {
     log('window close: quitting app');
@@ -102,9 +105,14 @@ function createWindow() {
 
   // Ctrl+Shift+I / F12 打开开发者工具（排查问题时用）
   win.webContents.on('before-input-event', (_e, input) => {
-    if (input.type === 'keyDown' && (input.key === 'F12' || (input.key === 'I' && input.control && input.shift))) {
+    if (input.type !== 'keyDown') return;
+    if (input.key === 'F12' || (input.key === 'I' && input.control && input.shift)) {
       win.webContents.toggleDevTools();
       log('devtools toggled');
+    }
+    // 禁用页面缩放快捷键（Ctrl+= / Ctrl+- / Ctrl+0），避免"网页感"
+    if (input.control && ['=', '+', '-', '0'].includes(input.key)) {
+      log(`zoom shortcut blocked: ${input.key}`);
     }
   });
 
@@ -216,6 +224,8 @@ if (!gotLock) {
   });
 
   app.whenReady().then(() => {
+    // Windows 上移除默认应用菜单栏（File/Edit/View...），更像原生桌面应用
+    if (process.platform === 'win32') Menu.setApplicationMenu(null);
     registerFsIpc();
     registerWebDAVIpc();
     registerShellIpc();

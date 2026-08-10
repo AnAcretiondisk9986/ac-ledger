@@ -159,7 +159,7 @@ ELECTRON_BUILDER_BINARIES_MIRROR="https://npmmirror.com/mirrors/electron-builder
 
 ## 9. 原交接文档之后的变更（2026-08-10）
 
-本节记录读取上一版交接文档后完成的全部修复，当前工作区尚未提交 commit。
+本节记录读取上一版交接文档后完成的全部修复，已按主题提交并推送（SSH，main 分支）。
 
 ### GitHub 一键连接
 
@@ -203,6 +203,13 @@ ELECTRON_BUILDER_BINARIES_MIRROR="https://npmmirror.com/mirrors/electron-builder
 - GitHub 私有数据仓库 `ac-ledger-data` 已初始化 `ledger.json`、`accounts.json`、`categories.json`，暂无交易月份文件；真实测试交易已清理。
 - 桌面目录版、安装版和桌面快捷方式此前已覆盖到修复后的构建；桌面版改动后仍必须重新打包并覆盖 `C:\Users\AnAcretiondisk\AppData\Local\Programs\ac-ledger-desktop`。
 - WebDAV 尚未使用真实账号做端到端登录验证，当前仅完成协议模拟测试；接手者需要提供服务地址和凭据后再验收。
+
+### 桌面化 UI（侧栏固定 + 去除网页感）
+
+- `App.tsx` 布局重构：外层 `Layout` 由 `minHeight: 100vh` 改为 `height: 100vh + overflow: hidden`，`Content` 增加 `overflow: auto + flex: 1`，实现**侧栏固定、仅内容区独立滚动**；右侧 `Layout` 加 `minWidth: 0` 防表格撑破。
+- 新增 `apps/web/src/global.css`（main.tsx 引入）：`body { user-select: none }`（input/textarea 保留）、`overscroll-behavior: none`、`-webkit-user-drag: none`、细窄圆角自定义滚动条、`html/body/#root { height: 100%; margin: 0 }`。
+- `main.cjs` 桌面化：`Menu.setApplicationMenu(null)` 移除 Windows 默认菜单栏；`setVisualZoomLevelLimits(1, 1)` 禁 Ctrl+滚轮/捏合缩放；`before-input-event` 拦截 Ctrl+=/-/0 缩放快捷键（F12/Ctrl+Shift+I DevTools 保留）。
+- 验证：web tsc、vite build、48 项测试全绿；桌面版需重新打包并覆盖安装目录后生效。
 
 ---
 
