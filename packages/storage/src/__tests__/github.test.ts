@@ -107,4 +107,33 @@ describe('GitHubAdapter', () => {
     const files = await adapter.listFiles('transactions');
     expect(files).toEqual([{ path: '2026-08.json', sha: 's2', size: undefined }]);
   });
+
+  it('空仓库首次写入不携带尚不存在的分支', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ default_branch: 'main', size: 0 }),
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 409,
+        json: async () => ({ message: 'Git Repository is empty.' }),
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 201,
+        json: async () => ({ content: {}, commit: {} }),
+      } as Response);
+    vi.stubGlobal('fetch', fetchMock);
+
+    const adapter = makeAdapter();
+    await adapter.testConnection();
+    expect(await adapter.readFile('ledger.json')).toBeNull();
+    await adapter.writeFile('ledger.json', '{}');
+
+    const body = JSON.parse(fetchMock.mock.calls[2]?.[1]?.body as string);
+    expect(body.branch).toBeUndefined();
+  });
 });

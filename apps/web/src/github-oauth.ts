@@ -121,7 +121,9 @@ const API_HEADERS = (token: string) => ({
 export async function fetchGithubUser(token: string): Promise<GitHubUser> {
   const res = await fetch('https://api.github.com/user', { headers: API_HEADERS(token) });
   if (!res.ok) throw new Error(`获取 GitHub 用户失败（HTTP ${res.status}）`);
-  return (await res.json()) as GitHubUser;
+  const user = (await res.json()) as GitHubUser;
+  if (!user.login) throw new Error('GitHub 用户响应缺少 login');
+  return user;
 }
 
 /**
@@ -137,7 +139,12 @@ export async function ensureLedgerRepo(token: string, owner: string, repoName: s
     const create = await fetch('https://api.github.com/user/repos', {
       method: 'POST',
       headers: { ...API_HEADERS(token), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: repoName, private: true, description: 'Ac记账 数据仓库' }),
+      body: JSON.stringify({
+        name: repoName,
+        private: true,
+        description: 'Ac记账 数据仓库',
+        auto_init: true,
+      }),
     });
     if (!create.ok) throw new Error(`创建数据仓库失败（HTTP ${create.status}）`);
     return;

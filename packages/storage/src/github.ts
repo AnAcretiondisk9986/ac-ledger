@@ -47,11 +47,16 @@ function encodePath(path: string): string {
  */
 export class GitHubAdapter implements StorageAdapter {
   readonly kind = 'github';
+  private resolvedBranch: string;
+  private branchExists: boolean | null = null;
+  private defaultBranch = 'main';
 
-  constructor(private readonly config: GitHubConfig) {}
+  constructor(private readonly config: GitHubConfig) {
+    this.resolvedBranch = config.branch?.trim() || 'main';
+  }
 
   private get branch(): string {
-    return this.config.branch ?? 'main';
+    return this.resolvedBranch;
   }
 
   private fullPath(path: string): string {
@@ -97,10 +102,14 @@ export class GitHubAdapter implements StorageAdapter {
       throw new StorageConflictError(`GitHub 并发冲突（HTTP 409）`);
     }
     const msg = (data as { message?: string } | undefined)?.message;
+    if (res.status === 422 && msg && /sha|already exists/i.test(msg)) {
+      throw new StorageConflictError(`GitHub 并发冲突：${msg}`);
+    }
     throw new StorageError(`GitHub API 错误 ${res.status}: ${msg ?? url}`);
   }
 
   async readFile(path: string): Promise<string | null> {
+    if (this.branchExists === false) return null;
     const p = this.fullPath(path);
     try {
       const { data } = await this.request<GitHubContentResponse>(
@@ -118,7 +127,7 @@ export class GitHubAdapter implements StorageAdapter {
     const p = this.fullPath(path);
     // 乐观锁：期望 sha 存在时先查询当前 sha，不匹配即冲突
     let currentSha: string | undefined = opts?.expectedSha;
-    if (!currentSha) {
+    if (!currentSha && this.branchExists !== false) {
       try {
         const { data } = await this.request<GitHubContentResponse>(
           'GET',
@@ -132,13 +141,16 @@ export class GitHubAdapter implements StorageAdapter {
     const body: Record<string, unknown> = {
       message: opts?.message ?? `ac-ledger: update ${p}`,
       content: encodeBase64(content),
-      branch: this.branch,
     };
+    // 空仓库尚无分支：首个 Contents API 写入不能携带 ref，由 GitHub 创建默认分支。
+    if (this.branchExists !== false) body.branch = this.branch;
     if (currentSha) body.sha = currentSha;
     await this.request('PUT', `${API}/repos/${this.config.owner}/${this.config.repo}/contents/${encodePath(p)}`, body);
+    this.branchExists = true;
   }
 
   async listFiles(prefix = ''): Promise<{ path: string; sha?: string; size?: number }[]> {
+    if (this.branchExists === false) return [];
     const fullPrefix = this.fullPath(prefix);
     const { data } = await this.request<{ tree: GitHubTreeItem[]; truncated: boolean }>(
       'GET',
@@ -158,6 +170,7 @@ export class GitHubAdapter implements StorageAdapter {
   }
 
   async deleteFile(path: string, opts?: WriteOptions): Promise<void> {
+    if (this.branchExists === false) return;
     const p = this.fullPath(path);
     let sha = opts?.expectedSha;
     if (!sha) {
@@ -180,10 +193,27 @@ export class GitHubAdapter implements StorageAdapter {
   }
 
   async testConnection(): Promise<void> {
-    const { data } = await this.request<{ login?: string }>(
+    const { data } = await this.request<{ default_branch?: string; size?: number }>(
       'GET',
       `${API}/repos/${this.config.owner}/${this.config.repo}`
     );
     if (!data) throw new StorageError('GitHub 仓库不可访问');
+    this.defaultBranch = data.default_branch || 'main';
+    this.resolvedBranch = this.config.branch?.trim() || this.defaultBranch;
+    try {
+      await this.request(
+        'GET',
+        `${API}/repos/${this.config.owner}/${this.config.repo}/git/ref/heads/${encodePath(this.branch)}`
+      );
+      this.branchExists = true;
+    } catch (e) {
+      // GitHub 对空仓库的 git/ref 请求返回 409（而非 404）。只有确认仓库为空时才按首次初始化处理。
+      const emptyRepository = Number(data.size ?? -1) === 0;
+      if (!(e instanceof StorageNotFoundError) && !(emptyRepository && e instanceof StorageConflictError)) throw e;
+      if (this.branch !== this.defaultBranch) {
+        throw new StorageNotFoundError(`GitHub 分支不存在: ${this.branch}`);
+      }
+      this.branchExists = false;
+    }
   }
 }
