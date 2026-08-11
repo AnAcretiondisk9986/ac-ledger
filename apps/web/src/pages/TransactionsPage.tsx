@@ -1,10 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Card, Table, Select, Input, Tag, Space, Button, Modal, Popconfirm, App as AntApp, Typography } from 'antd';
+import { Card, Table, Select, Input, DatePicker, Tag, Space, Button, Modal, Popconfirm, App as AntApp, Typography } from 'antd';
 import { DeleteOutlined, EditOutlined, TagsOutlined } from '@ant-design/icons';
-import { formatMoney, monthKey, summarize } from '@ac-ledger/core';
+import { formatMoney, summarize } from '@ac-ledger/core';
+import type { Dayjs } from 'dayjs';
+import dayjs from 'dayjs';
 import { useStore } from '../store';
 import TransactionForm, { toFormValues } from './TransactionForm';
 import { Transaction, TransactionType } from '@ac-ledger/core';
+
+const { RangePicker } = DatePicker;
 
 const TYPE_TAG: Record<TransactionType, { color: string; label: string }> = {
   income: { color: 'green', label: '收入' },
@@ -12,6 +16,13 @@ const TYPE_TAG: Record<TransactionType, { color: string; label: string }> = {
   transfer: { color: 'blue', label: '转账' },
   neutral: { color: 'default', label: '中性' },
 };
+
+/** 交易日期（YYYY-MM-DD）是否在范围内；范围为空表示全部 */
+function inRange(date: string, range: [Dayjs, Dayjs] | null): boolean {
+  if (!range) return true;
+  const d = date.slice(0, 10);
+  return d >= range[0].format('YYYY-MM-DD') && d <= range[1].format('YYYY-MM-DD');
+}
 
 export default function TransactionsPage() {
   const transactions = useStore((s) => s.transactions);
@@ -24,22 +35,25 @@ export default function TransactionsPage() {
 
   const [autoCatLoading, setAutoCatLoading] = useState(false);
 
-  const [month, setMonth] = useState<string | undefined>();
+  const [range, setRange] = useState<[Dayjs, Dayjs] | null>(null);
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [keyword, setKeyword] = useState('');
   const [editing, setEditing] = useState<Transaction | null>(null);
   const [editOpen, setEditOpen] = useState(false);
 
-  // 月份列表加载后默认选中最新月
+  // 月份列表加载后默认选中最新月（转为该月起止日期范围）
   useEffect(() => {
-    if (!month && months.length > 0) setMonth(months[months.length - 1]);
-  }, [months, month]);
+    if (!range && months.length > 0) {
+      const start = dayjs(`${months[months.length - 1]}-01`);
+      setRange([start, start.endOf('month')]);
+    }
+  }, [months, range]);
 
   const catMap = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
 
   const filtered = useMemo(() => {
     return transactions
-      .filter((t) => (!month || monthKey(t.date) === month))
+      .filter((t) => inRange(t.date, range))
       .filter((t) => typeFilter === 'all' || t.type === typeFilter)
       .filter(
         (t) =>
@@ -49,7 +63,7 @@ export default function TransactionsPage() {
           t.refId?.includes(keyword)
       )
       .sort((a, b) => (a.date < b.date ? 1 : -1));
-  }, [transactions, month, typeFilter, keyword]);
+  }, [transactions, range, typeFilter, keyword]);
 
   const summary = useMemo(() => summarize(filtered), [filtered]);
 
@@ -143,13 +157,18 @@ export default function TransactionsPage() {
       title="账单"
       extra={
         <Space wrap>
-          <Select
-            style={{ width: 140 }}
-            placeholder="全部月份"
+          <RangePicker
+            style={{ width: 260 }}
             allowClear
-            value={month}
-            onChange={setMonth}
-            options={[...months].reverse().map((m) => ({ value: m, label: m }))}
+            value={range}
+            onChange={(dates) =>
+              setRange(dates && dates[0] && dates[1] ? [dates[0], dates[1]] : null)
+            }
+            presets={[
+              { label: '本月', value: [dayjs().startOf('month'), dayjs()] },
+              { label: '本年', value: [dayjs().startOf('year'), dayjs()] },
+              { label: '近一年', value: [dayjs().subtract(1, 'year').add(1, 'day'), dayjs()] },
+            ]}
           />
           <Select
             style={{ width: 100 }}
@@ -163,7 +182,12 @@ export default function TransactionsPage() {
               { value: 'neutral', label: '中性' },
             ]}
           />
-          <Input.Search placeholder="搜索对方/备注/单号" allowClear style={{ width: 220 }} onSearch={setKeyword} />
+          <Input.Search
+            placeholder="搜索对方/备注/单号"
+            allowClear
+            style={{ width: 220 }}
+            onChange={(e) => setKeyword(e.target.value)}
+          />
           <Popconfirm
             title="按商户名自动匹配分类？"
             description="仅未分类的收支交易会被处理，未匹配的保持不变。"

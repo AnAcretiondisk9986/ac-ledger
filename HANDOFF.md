@@ -1,7 +1,7 @@
 # AcLedger（Ac记账）项目交接文档
 
 > 本文件供接手的 AI/开发者使用，内容自包含，无需额外上下文。
-> 生成日期：2026-08-10。最后验证：48 项测试全绿、桌面版/Web 版在线。
+> 生成日期：2026-08-10。最后验证：67 项测试全绿、桌面版/Web 版在线。
 
 ---
 
@@ -269,6 +269,11 @@ ELECTRON_BUILDER_BINARIES_MIRROR="https://npmmirror.com/mirrors/electron-builder
 ### 图表类型切换
 
 - `StatsPage.tsx` 两个图表 Card 的 extra 增加 `Segmented` 切换器：**收支趋势**支持 柱状图 ↔ 折线图（LineChart，monotone 曲线）；**支出分类占比**支持 饼图 ↔ 横向柱状图（分类名纵轴、金额横轴，颜色沿用饼图配色）。
+
+### 账单搜索缺陷修复
+
+- 缺陷：账单页只能按月份筛选，且关键词搜索框清除按钮不生效（antd `Input.Search` 的 `allowClear` 不触发 `onSearch`，清空输入后 keyword 状态仍保留）。
+- `TransactionsPage.tsx`：月份下拉升级为**日期范围筛选**（RangePicker，与统计页一致，快捷项：本月/本年/近一年，清空=全部账单）；关键词搜索改为 `onChange` 实时过滤，清空输入立即恢复；默认仍选中最新月（转为该月起止日期）。
 
 ---
 
