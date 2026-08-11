@@ -1,6 +1,6 @@
 # Ac记账
 
-支持**桌面端（Electron）**与 **Web 端**的记账软件。数据以 JSON 文件形式存储在 **GitHub 仓库**（或 **WebDAV** 网盘）中，无需自建服务器，跨设备同步。
+支持**桌面端（Electron）**与 **Web 端**的记账软件。数据以 JSON 文件形式存储在 **GitHub 仓库**、**WebDAV 网盘**或**本机文件夹**中，无需自建服务器，跨设备同步。
 
 ## 架构
 
@@ -11,7 +11,7 @@
              ▼
   packages/core            记账核心（纯 TS）：数据模型、金额、分类、统计
              ▼
-  packages/storage         存储适配层：GitHub / WebDAV / 内存
+  packages/storage         存储适配层：GitHub / WebDAV / 本地文件 / 内存
              ▼
   packages/bill-import   账单导入解析器（微信 CSV/xlsx + 支付宝 CSV）
 ```
@@ -21,7 +21,7 @@ npm workspaces monorepo：
 | 包 | 说明 |
 |---|---|
 | `@ac-ledger/core` | 数据模型（交易/账户/分类/账本）、金额工具、统计、分类树 |
-| `@ac-ledger/storage` | `StorageAdapter` 接口 + `LedgerRepository` 数据仓库 + GitHub/WebDAV/内存适配器 |
+| `@ac-ledger/storage` | `StorageAdapter` 接口 + `LedgerRepository` 数据仓库 + GitHub/WebDAV/本地/内存适配器 |
 | `@ac-ledger/bill-import` | 账单解析（微信 CSV/xlsx + 支付宝 CSV，含真实样本测试） |
 | `apps/web` | Web 前端（Vite + React + antd）：记账/账单/导入/统计/设置 |
 | `apps/desktop` | 桌面壳（Electron）：复用同一前端，开发/生产双模式 |
@@ -35,7 +35,7 @@ npm run build -w @ac-ledger/web
 NODE_ENV=production electron apps/desktop   # 或 npm run start -w @ac-ledger/desktop
 ```
 
-- 主进程 `apps/desktop/main.cjs`：开发加载 `http://localhost:5173`，生产加载 `dist/index.html`（HashRouter 兼容 file://）
+- 主进程 `apps/desktop/main.cjs`：开发加载 `http://localhost:5173`，生产加载 `renderer/index.html`（HashRouter 兼容 file://；打包时由 `scripts/prepare-app.cjs` 将 Web 构建产物复制到 `app/renderer`）
 - 安全基线：`contextIsolation: true`、`nodeIntegration: false`、`sandbox: true`，渲染进程仅通过 preload 暴露最小平台信息
 
 ### GitHub 授权（OAuth 设备流，纯前端）
@@ -50,10 +50,23 @@ NODE_ENV=production electron apps/desktop   # 或 npm run start -w @ac-ledger/de
 
 桌面版可在设置中选择「本机文件夹」：数据存于 `userData/ledger-data`，完全离线可用。
 
-- 主进程 `fs-ipc.cjs` 注册 6 个 fs handler（路径逃逸防护，渲染进程只能访问数据目录内相对路径）
-- preload 以 `FileSystemOps` 形状暴露 `window.acLedgerDesktop.storage` 桥
+- 主进程 `fs-ipc.cjs` 注册 fs / fs-cache 两套桥（路径逃逸防护，渲染进程只能访问数据目录内相对路径；fs-cache 为 GitHub 模式本地缓存目录，按仓库 slug 隔离）
+- preload 以 `FileSystemOps` 形状暴露 `window.acLedgerDesktop.storage` / `cacheStorage` 桥
 - `@ac-ledger/storage/local`：浏览器安全的 LocalAdapter（ops 注入）；`./local-node`：Node 默认实现
 - Web 版不显示本地选项（`window.acLedgerDesktop` 仅桌面存在）
+
+### 双线存储（GitHub 模式，桌面版）
+
+桌面版连接 GitHub 后，写入先落在**本地工作副本**（`userData/ledger-cache/<owner>-<repo>/`），操作快且离线可用；GitHub 仓库只在两个时机访问：
+
+- **打开时同步**：双向对比本地与远端（blob sha），本地领先→补交上传，远端领先（其他端更改）→拉取下载；交易文件按月**并集合并**（按 id/refId 去重），配置类文件取较新；同步失败不阻塞启动，退出时重试
+- **退出时提交**：主进程拦截关闭 → 渲染进程执行 `pushAll()` → 成功退出；失败弹窗三选（重试 / 仍然退出（本地副本保留，下次打开自动补交）/ 取消），30 秒超时兜底
+
+Web 版保持实时直连 GitHub（浏览器无本地目录）。
+
+### 无边框窗口
+
+桌面版隐藏系统标题栏（`frame: false`），窗口控制（最小化/最大化/关闭）自绘到界面顶部拖拽区，通过 `windowControls` IPC 桥控制主进程窗口；顶部区域可拖拽移动窗口。
 
 ### 打包安装包（electron-builder）
 
@@ -61,7 +74,7 @@ NODE_ENV=production electron apps/desktop   # 或 npm run start -w @ac-ledger/de
 npm run dist -w @ac-ledger/desktop   # 产出 release/：安装包 Setup + 便携版 + win-unpacked
 ```
 
-产物：`release/Ac记账 Setup 0.1.0.exe`（NSIS 安装包）、`release/Ac记账 0.1.0.exe`（便携版）、`release/win-unpacked/`（目录版）。
+产物：`release/Ac记账 Setup <版本>.exe`（NSIS 安装包）、`release/Ac记账 <版本>.exe`（便携版）、`release/win-unpacked/`（目录版）。版本号来自 git tag（如 `v0.2.1` → `0.2.1`），CI 与本地打包均自动解析。
 
 注意（网络镜像，本机已验证）：
 - electron 二进制下载走 `electronDownload.mirror = https://npmmirror.com/mirrors/electron/`（已固化在 build 配置）
@@ -80,10 +93,11 @@ npm run build    # 产物在 apps/web/dist，可部署 GitHub Pages（已用相�
 
 - **数据源配置**：GitHub 仓库 / WebDAV，配置存 localStorage，自动重连
 - **记账**：手动记一笔（收支/转账/中性 + 分类/账户/备注），连续记账自动清空表单
-- **账单**：按日期范围浏览、类型/关键词筛选、行内编辑删除、月度收支汇总
-- **导入**：微信/支付宝文件拖拽上传 → 解析预览 → 按交易单号去重后批量导入
-- **统计**：月度收支卡片、收支趋势柱状图、支出分类占比饼图
-- **设置**：账户与分类管理
+- **账单**：日期范围筛选（快捷：本月/本年/近一年，清空=全部）、类型/关键词实时筛选、行内编辑删除、收支汇总
+- **导入**：微信/支付宝文件拖拽上传 → 解析预览 → 按交易单号去重后批量导入；导入时按商户名自动匹配分类
+- **统计**：全局日期范围筛选（所有区块联动）、月度收支卡片、年度统计、支出商户统计、全账单收支统计、收支趋势（柱状/折线可切换）、支出分类占比（饼图/横向柱状可切换）
+- **设置**：账户与分类管理、自动分类自定义规则（类型/分类/关键词，可删除）
+- **其他**：存量未分类交易一键按商户补分类；自动分类规则随仓库多设备同步
 
 ## 快速开始
 
@@ -101,7 +115,7 @@ npm run build     # 构建全部包
 ├── ledger.json          # 账本元数据 { version, ledger: { id, name, currency } }
 ├── accounts.json        # 账户列表
 ├── categories.json      # 分类列表（首次初始化写入默认分类）
-├── settings.json        # 同步设置（预留）
+├── settings.json        # 设置（自动分类自定义规则 autoCategoryRules）
 └── transactions/
     └── 2026-08.json     # 交易按月分片 { version, month, transactions: [...] }
 ```
@@ -152,7 +166,7 @@ await repo.initLedger({ name: '我的账本' });
 await repo.addTransactions(parsedTransactions);
 ```
 
-⚠️ 桌面端 Token 存于本机配置；Web 端建议用 GitHub OAuth App 授权（避免 Token 暴露在浏览器），后续实现。
+⚠️ 桌面端 Token 存于本机配置；Web 端用 GitHub OAuth App 授权（设备流，详见上文「GitHub 授权」）。
 
 ## WebDAV 配置（坚果云等）
 
@@ -203,8 +217,10 @@ await repo.addTransactions(result.transactions); // 自动按 refId 去重
 
 ## 路线图
 
-- [ ] Web 前端（React + Vite）：记账、账单列表、分类管理、统计图表
-- [ ] Electron 桌面壳（复用同一前端）
-- [ ] GitHub OAuth 授权（Web 端安全模式）
-- [ ] 设置界面：存储源管理（GitHub / WebDAV / 多账本切换）
-- [ ] 导入预览与分类映射（微信账单 → 本地分类/账户）
+已实现：桌面端 + Web 端、GitHub OAuth 设备流、三种存储（GitHub / WebDAV / 本机文件夹）、账单导入与自动分类、统计看板。后续计划：
+
+- [ ] 桌面版自动更新（electron-updater）
+- [ ] 数据导出（CSV 导出）
+- [ ] 移动端 / PWA
+- [ ] Web 版 GitHub 授权码流（受 GitHub CORS 限制设备流不可用于 Web，需 Serverless 中转）
+- [ ] 账户自动匹配（导入时按支付方式映射账户）
