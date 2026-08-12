@@ -229,6 +229,18 @@ a,
 .ant-card .ant-card-extra { color: var(--muted); }
 
 .surface-card.ant-card { overflow: hidden; }
+.import-mode-switch.ant-segmented { margin-bottom: 22px; }
+.ocr-import-panel { display: grid; gap: 16px; }
+.ocr-platform-row { display: flex; align-items: center; justify-content: space-between; gap: 18px; }
+.ocr-inline-help { margin-left: 10px; font-size: 12px; }
+.ocr-file-row { display: flex; align-items: center; gap: 10px; width: 100%; padding: 5px 0; }
+.ocr-file-name { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+.ocr-progress { display: grid; gap: 7px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 7px; background: #f9faf8; }
+.ocr-progress > div { display: flex; justify-content: space-between; gap: 14px; font-size: 12px; }
+.ocr-actions, .ocr-review-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+.ocr-review-actions { margin-top: 16px; }
+.ocr-review-actions > .ant-typography { margin-right: auto; }
+.ocr-review .ant-table-cell { vertical-align: middle; }
 .primary-form-card.ant-card .ant-card-body { padding: 26px 28px 28px; }
 .primary-form { max-width: 560px; }
 .primary-form .ant-input-number-input { font-size: 22px; font-weight: 640; font-variant-numeric: tabular-nums; }

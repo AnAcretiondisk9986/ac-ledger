@@ -18,6 +18,8 @@ export type {
 export * from './csv.js';
 export * from './wechat/index.js';
 export * from './alipay/parser.js';
+export * from './ocr/types.js';
+export * from './ocr/parser.js';
 
 export type BillKind = 'wechat' | 'alipay' | 'xlsx';
 

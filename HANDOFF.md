@@ -1,13 +1,13 @@
 # AcLedger（Ac记账）项目交接文档
 
 > 本文件供接手的 AI/开发者使用，内容自包含，无需额外上下文。
-> 生成日期：2026-08-10。最后更新：2026-08-12。最后验证：71 项测试全绿、类型检查与 Web 生产构建通过。
+> 生成日期：2026-08-10。最后更新：2026-08-12。当前版本：0.4.0。最后验证：75 项测试全绿、Web/bill-import 类型检查、Web 生产构建与桌面端完整打包通过。
 
 ---
 
 ## 1. 项目是什么
 
-记账应用：支持 **桌面端（Electron）** 与 **Web 端（GitHub Pages）**，数据存储在 **GitHub 私有仓库 / WebDAV / 本机文件夹** 三种模式。支持微信、支付宝账单导入与月度统计。
+记账应用：支持 **桌面端（Electron）** 与 **Web 端（GitHub Pages）**，数据存储在 **GitHub 私有仓库 / WebDAV / 本机文件夹** 三种模式。支持微信、支付宝账单文件导入、本地截图 OCR 与统计分析。
 
 ### 线上地址（均已验证 HTTP 200）
 
@@ -33,8 +33,8 @@ npm workspaces monorepo，TypeScript（strict），Node 24，npm 11：
 ```
 packages/core             记账核心（纯 TS）：数据模型/金额/分类树/统计
 packages/storage          存储适配层：StorageAdapter 接口 + GitHub/WebDAV/Local 适配器
-packages/bill-import      账单解析：微信（CSV/xlsx）+ 支付宝（GBK CSV）
-apps/web                  Web 前端：Vite 5 + React 18 + antd 5 + zustand + recharts（HashRouter）
+packages/bill-import      账单解析：微信（CSV/xlsx）+ 支付宝（GBK CSV）+ 截图坐标解析
+apps/web                  Web 前端：Vite 5 + React 18 + antd 5 + zustand + recharts + tesseract.js（HashRouter）
 apps/desktop              Electron 33 壳：main.cjs / preload.cjs / fs-ipc.cjs
 scripts/create-repos.mjs  一次性脚本（设备流建仓库，已用过可删）
 .github/workflows/        release.yml（打 tag 自动打包发布）+ pages.yml（Web 部署）
@@ -50,7 +50,7 @@ scripts/create-repos.mjs  一次性脚本（设备流建仓库，已用过可删
 
 ```bash
 npm install                          # 首次；npm 11 下 postinstall 需 approve（见环境节）
-npm test                             # vitest 全量（当前 48 项）
+npm test                             # vitest 全量（当前 75 项）
 npm run typecheck                    # 全包类型检查
 npm run build                        # 构建三个 package
 
@@ -68,7 +68,7 @@ ELECTRON_BUILDER_BINARIES_MIRROR="https://npmmirror.com/mirrors/electron-builder
 # 更新已安装版：cp -r release/win-unpacked/. "C:\Users\AnAcretiondisk\AppData\Local\Programs\ac-ledger-desktop\"
 ```
 
-发新版：`git tag v0.2.0 && git push origin v0.2.0`（GitHub Actions 自动打包 + 上传 Release 草稿）。
+发新版：先同步所有 workspace `package.json` 与 lockfile 版本，再执行 `git tag v0.4.0 && git push origin v0.4.0`；GitHub Actions 自动测试、构建并上传 Release 草稿。
 
 ---
 
@@ -105,6 +105,8 @@ ELECTRON_BUILDER_BINARIES_MIRROR="https://npmmirror.com/mirrors/electron-builder
 | 15 | GBK 编码 | 支付宝 CSV 是 GBK | `decodeCsvBytes`（UTF-8 含替换符时回退 GBK） |
 | 16 | 微信 xlsx 日期 | exceljs 返回 Date 按本地时区解释 | 取本地字段拼 `YYYY-MM-DD HH:mm:ss`，后缀 `+08:00` |
 | 17 | 微信 xlsx 导入提示“请使用 parseBill 并传入文件字节” | `parseBill` 对二进制先按 UTF-8 解码，再进入 `parseBillText`；xlsx 是 ZIP 二进制，因此被误判并主动报错 | `parseBill` 对 `Uint8Array`/`ArrayBuffer` 在文件名为 `.xlsx/.xls`、字节 ZIP 签名（`PK\\x03\\x04`）或 `kind: 'xlsx'` 时，直接调用 `parseWechatBill` → `readXlsxRows`（ExcelJS）；文本入口 `parseBillText` 仍只接受 CSV 文本并保留提示 |
+| 18 | 桌面端已改源码但界面仍是旧版 | 用户打开的是 `%LOCALAPPDATA%\\Programs\\ac-ledger-desktop` 旧安装版，工作区 `app/renderer` 或 `release/win-unpacked` 更新不会覆盖已安装 `app.asar` | 重新执行 `npm run dist -w @ac-ledger/desktop`，安装新的 Setup；诊断时查看 `%APPDATA%\\ac-ledger-desktop\\ac-ledger.log` 的 `packaged: load` 路径和安装目录 `resources/app.asar` 修改时间/大小 |
+| 19 | OCR Worker/模型在桌面或 Pages 中加载失败 | Tesseract 默认 CDN 路径不满足全本地要求，或静态服务器给 Worker/WASM/gzip 返回错误 MIME | `apps/web/vite.config.ts` 的 `localOcrAssets()` 在开发时本地响应、构建时复制，并为 `.js`/`.wasm`/`.gz` 设置正确 MIME；桌面端由 `prepare-app.cjs` 连同整个 Web dist 复制 |
 
 ---
 
@@ -138,6 +140,9 @@ ELECTRON_BUILDER_BINARIES_MIRROR="https://npmmirror.com/mirrors/electron-builder
 - [x] 微信 983 笔 + 支付宝 611 笔真实样本解析（本地 fixture）
 - [x] 微信 XLSX 统一入口：页面将 `File.arrayBuffer()` 转为 `Uint8Array` 后调用 `parseBill(bytes, file.name)`；支持缺少文件名的 ZIP 字节和显式 `kind: 'xlsx'`
 - [x] XLSX 回归验证：动态生成 ExcelJS 工作簿，统一入口成功解析交易数量和金额；bill-import 构建与全包类型检查通过
+- [x] 本地截图 OCR：用户手动选择微信/支付宝，支持拖拽、多选和剪贴板图片；覆盖微信「记账本」、微信「账单」和支付宝交易列表三类截图
+- [x] OCR 隐私与去重：截图只在本地 Tesseract WASM 中处理，不保存、不上传、不同步；确认后的交易使用稳定 OCR 指纹 `refId` 去重，疑似重复默认不导入
+- [x] OCR 真实图片验收：微信「账单」8 笔、支付宝列表 5 笔完整识别；微信「记账本」4 笔均能提取，极小浅灰文字的不确定字段会标记人工复核
 - [x] 桌面版白屏问题（含安装版快捷方式指向旧包的坑）
 - [x] 设备流主进程转发、一键登录、打开授权页
 - [x] GitHub Actions：tag 触发打包发布（v0.1.0 已发布）+ Pages 自动部署（已上线）
@@ -274,6 +279,16 @@ ELECTRON_BUILDER_BINARIES_MIRROR="https://npmmirror.com/mirrors/electron-builder
 
 - 缺陷：账单页只能按月份筛选，且关键词搜索框清除按钮不生效（antd `Input.Search` 的 `allowClear` 不触发 `onSearch`，清空输入后 keyword 状态仍保留）。
 - `TransactionsPage.tsx`：月份下拉升级为**日期范围筛选**（RangePicker，与统计页一致，快捷项：本月/本年/近一年，清空=全部账单）；关键词搜索改为 `onChange` 实时过滤，清空输入立即恢复；默认仍选中最新月（转为该月起止日期）。
+
+### 本地截图 OCR（v0.4.0）
+
+- `apps/web/src/pages/ImportPage.tsx` 在原有「账单文件」之外增加「截图识别」模式；`OcrImportPanel.tsx` 提供微信/支付宝选择、拖拽/多选/剪贴板输入、进度、可编辑交易预览、问题标签、重复禁选和确认导入。
+- `apps/web/src/ocr.ts` 动态加载并复用 `tesseract.js` Worker。支付宝执行原图单通道识别；微信额外执行增强对比度通道，窄幅截图再执行二值化通道，以提高浅灰小字召回率。多通道结果按坐标重叠合并。
+- `packages/bill-import/src/ocr/parser.ts` 只负责坐标感知解析，不依赖浏览器：金额作为行锚点，结合邻近商户、日期标题、时间与元数据生成 `Transaction`。用户选择平台，微信具体页面版式自动判断。
+- OCR 问题标签：`low-confidence`、`missing-time`、`inferred-date`、`ambiguous-type`、`missing-counterparty`。不确定结果必须留在预览中人工确认，尤其是微信「记账本」极小浅灰时间和银行卡尾号。
+- OCR 去重键：`platform + minute timestamp + type + amount + normalized merchant` 经稳定 FNV-1a 指纹生成 `ocr:<platform>:<hash>`；同批次和账本已有交易均检测。
+- 模型与运行文件完全本地：`@tesseract.js-data/chi_sim` 完整模型压缩后约 20 MB；`apps/web/vite.config.ts` 开发时响应 `/ocr-assets`，生产时复制 Worker、三套 WASM 核心和模型到 `dist/ocr-assets`。Electron 打包后路径为 `resources/app.asar/renderer/ocr-assets/`。
+- 验证：新增 `ocr-import.test.ts` 4 项确定性版式/指纹测试；全仓库共 75 项测试通过。Web 与 bill-import 类型检查、Web production build、`prepare:app` 和 `npm run dist -w @ac-ledger/desktop` 均通过；新桌面 `app.asar` 约 43 MB，旧安装版约 2.8 MB，可用于快速识别是否仍在运行旧包。
 
 ---
 

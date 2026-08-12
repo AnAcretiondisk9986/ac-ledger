@@ -10,12 +10,16 @@ import {
   Space,
   Typography,
   App as AntApp,
+  Segmented,
 } from 'antd';
-import { InboxOutlined, FileExcelOutlined } from '@ant-design/icons';
+import { InboxOutlined, FileExcelOutlined, ScanOutlined } from '@ant-design/icons';
 import { parseBill, BillParseResult } from '@ac-ledger/bill-import';
 import { applyAutoAccount, applyAutoCategory, formatMoney, guessAccount, guessCategoryName } from '@ac-ledger/core';
 import { useStore } from '../store';
 import { Transaction } from '@ac-ledger/core';
+import OcrImportPanel from './OcrImportPanel';
+
+type ImportMode = 'file' | 'ocr';
 
 const TYPE_TAG: Record<string, { color: string; label: string }> = {
   income: { color: 'green', label: '收入' },
@@ -33,6 +37,7 @@ export default function ImportPage() {
   const { message } = AntApp.useApp();
 
   const [step, setStep] = useState(0);
+  const [mode, setMode] = useState<ImportMode>('file');
   const [parsed, setParsed] = useState<BillParseResult | null>(null);
   const [fileName, setFileName] = useState('');
   const [importing, setImporting] = useState(false);
@@ -124,6 +129,24 @@ export default function ImportPage() {
 
   return (
     <Card className="surface-card" title="导入账单">
+      <Segmented<ImportMode>
+        className="import-mode-switch"
+        value={mode}
+        options={[
+          { value: 'file', label: '账单文件', icon: <FileExcelOutlined /> },
+          { value: 'ocr', label: '截图识别', icon: <ScanOutlined /> },
+        ]}
+        onChange={(value) => {
+          setMode(value);
+          setStep(0);
+          setParsed(null);
+        }}
+      />
+
+      {mode === 'ocr' ? (
+        <OcrImportPanel onImported={() => setMode('file')} />
+      ) : (
+        <>
       <Steps
         current={step}
         items={[
@@ -204,6 +227,8 @@ export default function ImportPage() {
 
       {step === 2 && (
         <Alert type="success" showIcon message="导入完成" description="可在「账单」页查看，统计页已自动更新。" />
+      )}
+        </>
       )}
     </Card>
   );

@@ -13,7 +13,7 @@
              ▼
   packages/storage         存储适配层：GitHub / WebDAV / 本地文件 / 内存
              ▼
-  packages/bill-import   账单导入解析器（微信 CSV/xlsx + 支付宝 CSV）
+  packages/bill-import   账单导入解析器（微信/支付宝文件 + 截图 OCR）
 ```
 
 npm workspaces monorepo：
@@ -22,7 +22,7 @@ npm workspaces monorepo：
 |---|---|
 | `@ac-ledger/core` | 数据模型（交易/账户/分类/账本）、金额工具、统计、分类树 |
 | `@ac-ledger/storage` | `StorageAdapter` 接口 + `LedgerRepository` 数据仓库 + GitHub/WebDAV/本地/内存适配器 |
-| `@ac-ledger/bill-import` | 账单解析（微信 CSV/xlsx + 支付宝 CSV，含真实样本测试） |
+| `@ac-ledger/bill-import` | 账单解析（微信 CSV/xlsx、支付宝 CSV、微信/支付宝截图 OCR，含版式测试） |
 | `apps/web` | Web 前端（Vite + React + antd）：记账/账单/导入/统计/设置 |
 | `apps/desktop` | 桌面壳（Electron）：复用同一前端，开发/生产双模式 |
 
@@ -95,6 +95,7 @@ npm run build    # 产物在 apps/web/dist，可部署 GitHub Pages（已用相�
 - **记账**：手动记一笔（收支/转账/中性 + 分类/账户/备注），连续记账自动清空表单
 - **账单**：日期范围筛选（快捷：本月/本年/近一年，清空=全部）、类型/关键词实时筛选、行内编辑删除、收支汇总
 - **导入**：微信/支付宝文件拖拽上传 → 解析预览 → 按交易单号去重后批量导入；导入时按商户名自动匹配分类，并按支付方式/账单来源匹配已有账户
+- **截图识别**：手动选择微信或支付宝，拖入/多选/粘贴截图 → 本地 OCR → 可编辑预览 → 去重导入；截图不保存、不上传、不参与同步
 - **统计**：全局日期与账户筛选、月度/年度/全账单收支、商户与分类统计、各账户收支对比、账户支出占比和月度变化趋势
 - **设置**：账户与分类管理、自动分类自定义规则（类型/分类/关键词，可删除）
 - **其他**：存量未分类交易一键按商户补分类；自动分类规则随仓库多设备同步
@@ -215,12 +216,28 @@ await repo.addTransactions(result.transactions); // 自动按 refId 去重
 
 两个真实样本（微信 983 笔 xlsx、支付宝 611 笔 GBK CSV）作为测试 fixture 全量验证。
 
+### 本地截图 OCR
+
+「导入 → 截图识别」支持以下手机账单截图：
+
+- 微信「记账本」列表
+- 微信「账单」列表
+- 支付宝交易列表
+
+平台由用户手动选择，具体微信版式自动判断。OCR 使用 `tesseract.js`、完整简体中文模型和本地 WASM Worker，所有识别均在浏览器/Electron 渲染进程本机完成；应用只持久化用户确认后的交易，不保存或同步原始截图。
+
+为兼顾速度与准确率，支付宝截图执行一次识别；微信截图额外识别增强对比度通道，窄幅低分辨率截图再增加二值化通道。识别结果按文字坐标解析金额、商户、日期和交易类型。低置信度、缺少时间、推断日期、收支不明确或商户缺失会在导入预览中标记，疑似重复项默认不导入。
+
+OCR 运行文件由 `apps/web/vite.config.ts` 管理：开发时从 `/ocr-assets/` 本地响应，生产构建复制到 `apps/web/dist/ocr-assets/`，桌面打包后位于 `app.asar/renderer/ocr-assets/`。完整中文模型压缩后约 20 MB，因此桌面/Web 构建产物会相应增大。
+
+真实截图验收：微信「账单」8 笔和支付宝列表 5 笔完整识别；微信「记账本」4 笔均能提取，极小浅灰色时间或银行卡尾号可能被标记为需要人工核对。
+
 ## 路线图
 
-已实现：桌面端 + Web 端、GitHub OAuth 设备流、三种存储（GitHub / WebDAV / 本机文件夹）、账单导入与自动分类、统计看板。后续计划：
+已实现：桌面端 + Web 端、GitHub OAuth 设备流、三种存储（GitHub / WebDAV / 本机文件夹）、文件与本地 OCR 账单导入、自动分类、统计看板。后续计划：
 
 - [ ] 桌面版自动更新（electron-updater）
 - [ ] 数据导出（CSV 导出）
 - [ ] 移动端 / PWA
 - [ ] Web 版 GitHub 授权码流（受 GitHub CORS 限制设备流不可用于 Web，需 Serverless 中转）
-- [ ] 账户自动匹配（导入时按支付方式映射账户）
+- [x] 账户自动匹配（导入时按支付方式映射账户）
