@@ -105,8 +105,8 @@ export default function SettingsPage() {
   };
 
   return (
-    <div>
-      <Card title="账本信息">
+    <div className="page-stack">
+      <Card className="surface-card" title="账本信息">
         <Typography.Paragraph style={{ marginBottom: 4 }}>
           账本：<b>{ledger?.ledger.name}</b>（{ledger?.ledger.currency}）
         </Typography.Paragraph>
@@ -115,7 +115,7 @@ export default function SettingsPage() {
         </Typography.Text>
       </Card>
 
-      <Card title="账户管理" style={{ marginTop: 16 }}>
+      <Card className="surface-card" title="账户管理">
         <Space style={{ marginBottom: 12 }}>
           <Form form={accountForm} layout="inline" onFinish={() => void addAccount()}>
             <Form.Item name="name" rules={[{ required: true, message: '账户名' }]}>
@@ -161,7 +161,7 @@ export default function SettingsPage() {
         />
       </Card>
 
-      <Card title="分类管理" style={{ marginTop: 16 }}>
+      <Card className="surface-card" title="分类管理">
         <Divider orientation="left" plain>
           支出分类
         </Divider>
@@ -205,7 +205,7 @@ export default function SettingsPage() {
         </Form>
       </Card>
 
-      <Card title="自动分类规则" style={{ marginTop: 16 }}>
+      <Card className="surface-card" title="自动分类规则">
         <Typography.Paragraph type="secondary" style={{ marginTop: 0 }}>
           导入账单与「按商户补分类」时，按商户名/备注匹配分类。自定义规则优先于内置规则，保存在数据仓库
           settings.json，多设备同步。

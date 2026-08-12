@@ -1,7 +1,7 @@
 # AcLedger（Ac记账）项目交接文档
 
 > 本文件供接手的 AI/开发者使用，内容自包含，无需额外上下文。
-> 生成日期：2026-08-10。最后验证：67 项测试全绿、桌面版/Web 版在线。
+> 生成日期：2026-08-10。最后更新：2026-08-12。最后验证：71 项测试全绿、类型检查与 Web 生产构建通过。
 
 ---
 
@@ -14,7 +14,7 @@
 | 入口 | 地址 |
 |---|---|
 | Web 版 | `https://anacretiondisk9986.github.io/ac-ledger/` |
-| 桌面版 Release | `https://github.com/AnAcretiondisk9986/ac-ledger/releases/tag/v0.1.0` |
+| 桌面版 Release | `https://github.com/AnAcretiondisk9986/ac-ledger/releases/latest` |
 | 发行仓库（公开） | `https://github.com/AnAcretiondisk9986/ac-ledger` |
 | 数据仓库（私有） | `https://github.com/AnAcretiondisk9986/ac-ledger-data` |
 
@@ -148,7 +148,7 @@ ELECTRON_BUILDER_BINARIES_MIRROR="https://npmmirror.com/mirrors/electron-builder
 - [ ] Web 版 GitHub 授权：受 GitHub CORS 限制设备流不可用；如需可加 Serverless 中转（Cloudflare Worker 持有 client_secret 做授权码流）
 - [ ] electron-builder portable 目标在用户机器被安全软件阻断——可选深究或直接移除该 target
 - [ ] 桌面版自动更新（electron-updater）
-- [ ] 分类自动映射（导入时按商品名/商户名猜分类）、账户自动匹配（微信支付方式→账户）
+- [x] 分类自动映射（导入时按商品名/商户名猜分类）、账户自动匹配（微信支付方式/支付宝来源→已有账户）
 - [ ] 移动端/PWA；数据导出（CSV 导出）
 - [ ] 首次打开数据仓库后验证应用自动初始化（ledger.json 等）——仓库当前为空，应用 connect 时会写入
 

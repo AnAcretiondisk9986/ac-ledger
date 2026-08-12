@@ -124,14 +124,21 @@ export function mapType(inOut: string): TransactionType {
 export function rowToTransaction(row: WechatRawRow, opts: BillParseOptions): Transaction {
   const amount = parseFloat(row.amount);
   const time = row.time.replace(' ', 'T') + '+08:00'; // 账单时间为东八区
+  const transactionType = mapType(row.inOut);
+  const paymentMethod = row.payMethod !== '/'
+    ? row.payMethod
+    : transactionType === 'income' && /已存入零钱|已到账/.test(row.status)
+      ? '微信'
+      : undefined;
   return {
     id: uuid(),
     date: time,
-    type: mapType(row.inOut),
+    type: transactionType,
     amount: Number.isFinite(amount) ? Math.round(amount * 100) / 100 : 0,
     currency: 'CNY',
     categoryId: opts.defaultCategoryId ?? null,
     accountId: null,
+    paymentMethod,
     counterparty: row.counterparty === '/' ? '' : row.counterparty,
     note: buildNote(row),
     status: mapStatus(row.status),

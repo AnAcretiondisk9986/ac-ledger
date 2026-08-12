@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { HashRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
-import { Layout, Menu, Spin, Typography, Button } from 'antd';
+import { Layout, Menu, Spin, Typography, Button, Tooltip } from 'antd';
 import {
   BookOutlined,
   PlusCircleOutlined,
@@ -20,11 +20,20 @@ import WindowControls from './WindowControls';
 
 const { Sider, Content, Header } = Layout;
 
+const PAGE_META: Record<string, { title: string; detail: string }> = {
+  '/add': { title: '记一笔', detail: '快速记录一笔新的收支' },
+  '/transactions': { title: '账单', detail: '查找、整理和核对每笔交易' },
+  '/import': { title: '导入', detail: '从微信或支付宝账单批量导入' },
+  '/stats': { title: '统计', detail: '从时间、分类和商户理解收支' },
+  '/settings': { title: '设置', detail: '管理账本、账户与分类规则' },
+};
+
 function Shell() {
   const navigate = useNavigate();
   const location = useLocation();
   const status = useStore((s) => s.status);
   const disconnect = useStore((s) => s.disconnect);
+  const config = useStore((s) => s.config);
 
   const menuItems = [
     { key: '/add', icon: <PlusCircleOutlined />, label: '记账' },
@@ -35,6 +44,8 @@ function Shell() {
   ];
 
   const current = menuItems.find((m) => location.pathname.startsWith(m.key))?.key ?? '/add';
+  const pageMeta = PAGE_META[current] ?? PAGE_META['/add']!;
+  const sourceLabel = config?.kind === 'github' ? 'GitHub' : config?.kind === 'webdav' ? 'WebDAV' : '本机';
 
   // 双击标题栏空白处切换最大化/还原（no-drag 区域内不触发）
   const handleHeaderDoubleClick = (e: React.MouseEvent) => {
@@ -43,55 +54,64 @@ function Shell() {
   };
 
   return (
-    <Layout style={{ height: '100vh', overflow: 'hidden' }}>
-      {/* 侧栏固定在窗口左侧，不随内容滚动 */}
-      <Sider theme="dark" width={180} style={{ overflow: 'auto' }}>
-        <div className="app-region-drag" style={{ color: '#fff', fontSize: 18, fontWeight: 700, padding: '16px 24px' }}>Ac记账</div>
+    <Layout className="app-shell">
+      <Sider className="app-sider" theme="dark" width={208}>
+        <div className="brand app-region-drag">
+          <div className="brand-mark" aria-hidden>Ac</div>
+          <div className="brand-copy">
+            <span className="brand-name">Ac记账</span>
+            <span className="brand-caption">清晰掌握每一笔</span>
+          </div>
+        </div>
         <Menu
+          className="app-nav app-region-no-drag"
           theme="dark"
           mode="inline"
           selectedKeys={[current]}
           items={menuItems}
           onClick={({ key }) => navigate(key)}
         />
+        <div className="sider-footer">
+          <span className="source-dot" />
+          <span>{sourceLabel} 已连接</span>
+        </div>
       </Sider>
-      <Layout style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+      <Layout className="app-main">
         <Header
-          className="app-region-drag"
+          className="app-header app-region-drag"
           onDoubleClick={handleHeaderDoubleClick}
-          style={{
-            background: '#fff',
-            display: 'flex',
-            justifyContent: 'flex-end',
-            alignItems: 'center',
-            paddingInline: 24,
-            flexShrink: 0,
-          }}
         >
-          <Typography.Text type="secondary">数据源：{useStore((s) => s.config)?.kind === 'github' ? 'GitHub 仓库' : useStore((s) => s.config)?.kind === 'webdav' ? 'WebDAV' : '未配置'}</Typography.Text>
-          <Button
-            className="app-region-no-drag"
-            icon={<DisconnectOutlined />}
-            style={{ marginLeft: 12 }}
-            onClick={() => {
-              disconnect();
-              navigate('/setup');
-            }}
-          >
-            断开
-          </Button>
+          <div className="page-heading">
+            <Typography.Title level={1}>{pageMeta.title}</Typography.Title>
+            <Typography.Text>{pageMeta.detail}</Typography.Text>
+          </div>
+          <div className="header-actions app-region-no-drag">
+            <div className="source-chip"><span className="source-dot" />{sourceLabel}</div>
+            <Tooltip title="断开数据源">
+              <Button
+                aria-label="断开数据源"
+                icon={<DisconnectOutlined />}
+                onClick={() => {
+                  disconnect();
+                  navigate('/setup');
+                }}
+              />
+            </Tooltip>
+          </div>
           <WindowControls flushRight />
         </Header>
-        <Content style={{ padding: 24, overflow: 'auto', flex: 1 }}>
-          <Routes>
-            <Route path="/setup" element={<SetupPage />} />
-            <Route path="/add" element={<AddPage />} />
-            <Route path="/transactions" element={<TransactionsPage />} />
-            <Route path="/import" element={<ImportPage />} />
-            <Route path="/stats" element={<StatsPage />} />
-            <Route path="/settings" element={<SettingsPage />} />
-            <Route path="*" element={<Navigate to="/add" replace />} />
-          </Routes>
+        <Content className="app-content">
+          <div className="content-frame route-enter" key={current}>
+            <Routes>
+              <Route path="/setup" element={<SetupPage />} />
+              <Route path="/add" element={<AddPage />} />
+              <Route path="/transactions" element={<TransactionsPage />} />
+              <Route path="/import" element={<ImportPage />} />
+              <Route path="/stats" element={<StatsPage />} />
+              <Route path="/settings" element={<SettingsPage />} />
+              <Route path="*" element={<Navigate to="/add" replace />} />
+            </Routes>
+          </div>
         </Content>
       </Layout>
     </Layout>
@@ -107,21 +127,13 @@ export default function App() {
 
   if (status === 'unconfigured' || status === 'error') {
     return (
-      <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
+      <div className="setup-shell">
         <div
-          className="app-region-drag"
-          style={{
-            height: 32,
-            flexShrink: 0,
-            display: 'flex',
-            justifyContent: 'flex-end',
-            alignItems: 'center',
-            background: '#f5f5f5',
-          }}
+          className="setup-titlebar app-region-drag"
         >
           <WindowControls />
         </div>
-        <div style={{ flex: 1, overflow: 'auto' }}>
+        <div className="setup-scroll">
           <SetupPage standalone />
         </div>
       </div>
@@ -130,16 +142,15 @@ export default function App() {
 
   if (status === 'connecting') {
     return (
-      <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
+      <div className="setup-shell">
         <div
-          className="app-region-drag"
-          style={{ height: 32, flexShrink: 0, display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}
+          className="setup-titlebar app-region-drag"
         >
           <WindowControls />
         </div>
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div className="connecting-state">
           <Spin size="large" tip="正在连接数据源…">
-            <div style={{ width: 120, height: 60 }} />
+            <div className="connecting-placeholder" />
           </Spin>
         </div>
       </div>

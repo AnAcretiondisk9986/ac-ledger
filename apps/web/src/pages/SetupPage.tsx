@@ -232,14 +232,15 @@ export default function SetupPage({ standalone = false }: { standalone?: boolean
 
   if (standalone) {
     return (
-      <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f5f5f5' }}>
-        <Card style={{ width: 520 }}>
-          <Typography.Title level={3} style={{ marginTop: 0 }}>
-            Ac记账
-          </Typography.Title>
-          <Typography.Paragraph type="secondary">
-            数据可存储在 GitHub 仓库、WebDAV 网盘或本机文件夹，首次使用请配置数据源。
-          </Typography.Paragraph>
+      <div className="setup-stage">
+        <Card className="setup-card">
+          <div className="setup-brand">
+            <div className="brand-mark" aria-hidden>Ac</div>
+            <div className="setup-copy">
+              <Typography.Title level={3}>Ac记账</Typography.Title>
+              <Typography.Paragraph>选择数据存放位置</Typography.Paragraph>
+            </div>
+          </div>
           <Form form={form} layout="vertical" initialValues={initialValues} onFinish={onFinish}>
             {formContent}
           </Form>
@@ -250,7 +251,7 @@ export default function SetupPage({ standalone = false }: { standalone?: boolean
   }
 
   return (
-    <Card title="数据源配置">
+    <Card className="surface-card" title="数据源配置">
       <Form form={form} layout="vertical" initialValues={initialValues} onFinish={onFinish}>
         {formContent}
       </Form>

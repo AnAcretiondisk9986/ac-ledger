@@ -28,6 +28,7 @@ export default function TransactionsPage() {
   const transactions = useStore((s) => s.transactions);
   const months = useStore((s) => s.months);
   const categories = useStore((s) => s.categories);
+  const accounts = useStore((s) => s.accounts);
   const removeTransaction = useStore((s) => s.removeTransaction);
   const updateTransaction = useStore((s) => s.updateTransaction);
   const autoCategorizeUncategorized = useStore((s) => s.autoCategorizeUncategorized);
@@ -50,6 +51,7 @@ export default function TransactionsPage() {
   }, [months, range]);
 
   const catMap = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
+  const accountMap = useMemo(() => new Map(accounts.map((a) => [a.id, a])), [accounts]);
 
   const filtered = useMemo(() => {
     return transactions
@@ -107,6 +109,13 @@ export default function TransactionsPage() {
         return c ? `${c.icon ?? ''} ${c.name}` : '-';
       },
     },
+    {
+      title: '账户',
+      dataIndex: 'accountId',
+      width: 140,
+      ellipsis: true,
+      render: (id: string | null) => (id ? accountMap.get(id)?.name ?? '-' : '-'),
+    },
     { title: '备注', dataIndex: 'note', ellipsis: true },
     {
       title: '金额',
@@ -153,10 +162,10 @@ export default function TransactionsPage() {
   };
 
   return (
-    <Card
-      title="账单"
-      extra={
-        <Space wrap>
+    <div className="page-stack">
+      <Card className="filter-card" size="small">
+        <div className="filter-row">
+          <Typography.Text className="filter-label">筛选</Typography.Text>
           <RangePicker
             style={{ width: 260 }}
             allowClear
@@ -197,20 +206,22 @@ export default function TransactionsPage() {
               按商户补分类{uncategorizedCount > 0 ? `（${uncategorizedCount}）` : ''}
             </Button>
           </Popconfirm>
-        </Space>
-      }
-    >
-      <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
-        共 {filtered.length} 笔 ｜ 收入 <b style={{ color: '#52c41a' }}>{formatMoney(summary.income)}</b> ｜ 支出{' '}
-        <b style={{ color: '#f5222d' }}>{formatMoney(summary.expense)}</b> ｜ 结余{' '}
-        <b>{formatMoney(summary.balance)}</b>
-      </Typography.Paragraph>
-      <Table rowKey="id" size="small" columns={columns} dataSource={filtered} pagination={{ pageSize: 30, showSizeChanger: true }} />
+        </div>
+      </Card>
+      <Card className="surface-card" title="交易明细">
+        <div className="summary-strip">
+          <span>共 <b>{filtered.length}</b> 笔</span>
+          <span>收入 <b className="amount-income">{formatMoney(summary.income)}</b></span>
+          <span>支出 <b className="amount-expense">{formatMoney(summary.expense)}</b></span>
+          <span>结余 <b>{formatMoney(summary.balance)}</b></span>
+        </div>
+        <Table rowKey="id" size="small" columns={columns} dataSource={filtered} pagination={{ pageSize: 30, showSizeChanger: true }} />
+      </Card>
       <Modal title="编辑交易" open={editOpen} footer={null} onCancel={() => setEditOpen(false)} destroyOnClose>
         {editing && (
           <TransactionForm key={editing.id} editing={editing} onSubmit={handleEdit} onCancel={() => setEditOpen(false)} />
         )}
       </Modal>
-    </Card>
+    </div>
   );
 }

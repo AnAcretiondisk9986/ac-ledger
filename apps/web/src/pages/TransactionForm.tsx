@@ -123,7 +123,7 @@ export default function TransactionForm({ editing, onSubmit, onCancel, submitTex
           ]}
         />
       </Form.Item>
-      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+      <div className="form-actions">
         {onCancel && <Button onClick={onCancel}>取消</Button>}
         <Button type="primary" htmlType="submit">
           {submitText}

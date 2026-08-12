@@ -38,6 +38,8 @@ export interface Transaction {
   categoryId: string | null;
   /** 账户 ID（零钱、储蓄卡…）；未知为 null */
   accountId: string | null;
+  /** 原始账单中的支付方式（如「零钱」「中国银行储蓄卡(4080)」） */
+  paymentMethod?: string;
   /** 交易对方（昵称/商户名） */
   counterparty: string;
   /** 备注/商品描述 */

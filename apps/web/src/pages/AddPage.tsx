@@ -17,8 +17,8 @@ export default function AddPage() {
   };
 
   return (
-    <Card title="记一笔">
-      <div style={{ maxWidth: 480 }}>
+    <Card className="surface-card primary-form-card" title="交易详情">
+      <div className="primary-form">
         <TransactionForm onSubmit={handleSubmit} submitText="保存" resetAfterSubmit />
       </div>
     </Card>

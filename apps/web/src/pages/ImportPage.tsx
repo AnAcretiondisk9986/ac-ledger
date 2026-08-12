@@ -13,7 +13,7 @@ import {
 } from 'antd';
 import { InboxOutlined, FileExcelOutlined } from '@ant-design/icons';
 import { parseBill, BillParseResult } from '@ac-ledger/bill-import';
-import { applyAutoCategory, formatMoney, guessCategoryName } from '@ac-ledger/core';
+import { applyAutoAccount, applyAutoCategory, formatMoney, guessAccount, guessCategoryName } from '@ac-ledger/core';
 import { useStore } from '../store';
 import { Transaction } from '@ac-ledger/core';
 
@@ -27,6 +27,7 @@ const TYPE_TAG: Record<string, { color: string; label: string }> = {
 export default function ImportPage() {
   const transactions = useStore((s) => s.transactions);
   const categories = useStore((s) => s.categories);
+  const accounts = useStore((s) => s.accounts);
   const autoRules = useStore((s) => s.autoRules);
   const addTransactions = useStore((s) => s.addTransactions);
   const { message } = AntApp.useApp();
@@ -67,7 +68,8 @@ export default function ImportPage() {
     setImporting(true);
     try {
       // 按商户名/备注自动匹配分类（仅未分类的收支交易），可导入后在账单页修改
-      const toAdd = applyAutoCategory(dedup.fresh, categories, autoRules);
+      const categorized = applyAutoCategory(dedup.fresh, categories, autoRules);
+      const toAdd = applyAutoAccount(categorized, accounts);
       const result = await addTransactions(toAdd);
       message.success(`导入完成：新增 ${result.added} 笔，跳过重复 ${result.skipped} 笔`);
       setStep(2);
@@ -96,6 +98,14 @@ export default function ImportPage() {
         return cat ? `${cat.icon ?? ''} ${cat.name}` : '-';
       },
     },
+    {
+      title: '支出账户',
+      width: 130,
+      render: (_: unknown, r: Transaction) => {
+        const hint = r.paymentMethod || (r.source === 'alipay' ? '支付宝' : '');
+        return (hint && guessAccount(hint, accounts)?.name) || '-';
+      },
+    },
     { title: '备注', dataIndex: 'note', ellipsis: true },
     {
       title: '金额',
@@ -113,7 +123,7 @@ export default function ImportPage() {
   ];
 
   return (
-    <Card title="账单导入">
+    <Card className="surface-card" title="导入账单">
       <Steps
         current={step}
         items={[

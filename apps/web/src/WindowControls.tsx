@@ -38,8 +38,7 @@ export default function WindowControls({ flushRight = false }: { flushRight?: bo
 
   return (
     <div
-      className="app-region-no-drag"
-      style={{ display: 'flex', alignItems: 'center', height: '100%', marginRight: flushRight ? -24 : 0 }}
+      className={`window-controls app-region-no-drag${flushRight ? ' window-controls-flush' : ''}`}
     >
       <button
         type="button"

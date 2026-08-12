@@ -30,6 +30,16 @@ const CSV_SAMPLE = `微信支付账单明细
 `;
 
 describe('微信账单 CSV 解析', () => {
+  it('收入支付方式为空但已到账时推断为微信账户', async () => {
+    const csv = [
+      '微信支付账单明细',
+      '共1笔记录',
+      '交易时间,交易类型,交易对方,商品,收/支,金额(元),支付方式,当前状态,交易单号,商户单号,备注',
+      '2026-08-10 10:00:00,微信红包,好友,红包,收入,10,/,已存入零钱,wx-income-1,/,/',
+    ].join('\n');
+    const result = await parseWechatBill(csv, 'wechat.csv');
+    expect(result.transactions[0]?.paymentMethod).toBe('微信');
+  });
   it('解析完整文件：类型/状态/中性/退款', async () => {
     const result = await parseWechatBill(CSV_SAMPLE, 'wechat.csv');
     expect(result.transactions.length).toBe(4); // 与头部声明一致
