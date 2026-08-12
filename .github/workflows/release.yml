@@ -30,6 +30,7 @@ jobs:
             builder_args: --mac
             artifacts: |
               apps/desktop/release/*.dmg
+              apps/desktop/release/*.pkg
               apps/desktop/release/*.zip
               apps/desktop/release/*.blockmap
               apps/desktop/release/latest-mac.yml

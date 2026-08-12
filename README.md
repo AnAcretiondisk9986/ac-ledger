@@ -72,14 +72,14 @@ Web 版保持实时直连 GitHub（浏览器无本地目录）。
 ### 打包安装包（electron-builder）
 
 ```bash
-npm run dist -w @ac-ledger/desktop    # 按当前平台打包（Windows → NSIS+便携版；macOS → dmg+zip）
+npm run dist -w @ac-ledger/desktop    # 按当前平台打包（Windows → NSIS+便携版；macOS → dmg+zip+pkg）
 npm run dist:win -w @ac-ledger/desktop
 npm run dist:mac -w @ac-ledger/desktop
 ```
 
 产物：
 - Windows：`release/Ac记账 Setup <版本>.exe`（NSIS 安装包）、`release/Ac记账 <版本>.exe`（便携版）、`release/win-unpacked/`（目录版）
-- macOS：`release/Ac记账-<版本>-universal.dmg`（安装镜像，Intel + Apple Silicon 通用）、`release/Ac记账-<版本>-universal-mac.zip`、`release/mac-universal/`（目录版）。macOS 版未做代码签名/公证，首次打开请右键应用 → 「打开」（或 `xattr -dr com.apple.quarantine /Applications/Ac记账.app`）；CI 在 macOS runner 上同时产出 dmg/zip。
+- macOS：`release/Ac记账-<版本>-universal.dmg`（安装镜像）、`release/Ac记账-<版本>-universal.pkg`（安装器包，双击走「安装器」安装）、`release/Ac记账-<版本>-universal-mac.zip`（解压拖入「应用程序」）、`release/mac-universal/`（目录版）。三者均为 Intel + Apple Silicon 通用。macOS 版未做代码签名/公证，首次打开请右键 → 「打开」（或 `xattr -dr com.apple.quarantine /Applications/Ac记账.app`）；CI 在 macOS runner 上同时产出 dmg/pkg/zip。
 
 版本号来自 git tag（如 `v0.2.1` → `0.2.1`），CI 与本地打包均自动解析。
 

@@ -63,6 +63,12 @@
           "arch": [
             "universal"
           ]
+        },
+        {
+          "target": "pkg",
+          "arch": [
+            "universal"
+          ]
         }
       ]
     },

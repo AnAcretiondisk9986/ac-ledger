@@ -314,6 +314,6 @@ ELECTRON_BUILDER_BINARIES_MIRROR="https://npmmirror.com/mirrors/electron-builder
 - **打包**：新增 `assets/icon.icns`（由 icon.png 经 sips+iconutil 生成）；`build.mac` 目标 dmg+zip（**universal**，Intel/Apple Silicon 通用）、`dmg.title`；脚本 `dist` 改为按当前平台（`electron-builder` 不带目标参数），新增 `dist:win`/`dist:mac`；`pack:dir` 不变
 - **CI**：release.yml 改矩阵（windows-latest + macos-latest），各自 `--win`/`--mac` 打包并上传 exe / dmg+zip；`CSC_IDENTITY_AUTO_DISCOVERY=false` 跳过 mac 签名（未签名产物 Gatekeeper 需右键打开，README 已说明）
 
-macOS 验证命令：`npm run dev -w @ac-ledger/desktop`（开发）、`SMOKE_TEST=1 npx electron .`（冒烟）、`npm run dist:mac -w @ac-ledger/desktop`（dmg/zip）、`npx electron-builder --mac --dir`（快速目录版）。macOS 打包用系统 hdiutil，无需 ELECTRON_BUILDER_BINARIES_MIRROR；electron 二进制仍走 npmmirror。
+macOS 验证命令：`npm run dev -w @ac-ledger/desktop`（开发）、`SMOKE_TEST=1 npx electron .`（冒烟）、`npm run dist:mac -w @ac-ledger/desktop`（dmg/zip/pkg）、`npx electron-builder --mac --dir`（快速目录版）。macOS 打包用系统 hdiutil/pkgbuild，无需 ELECTRON_BUILDER_BINARIES_MIRROR；electron 二进制仍走 npmmirror。
 
-> 本机验证备注（macOS）：universal 目录版（x86_64+arm64 双架构已用 `file` 确认）与 zip 产物、打包版 SMOKE 冒烟（dev 模式 + packaged 模式）均验证通过；dmg 生成依赖 hdiutil 挂载，受本机受限 shell 环境禁止挂载的限制未能在本地跑通（手动 hdiutil 同参数同样被拒），在 GitHub macOS runner 上不受影响。
+> 本机验证备注（macOS）：universal 目录版（x86_64+arm64 双架构已用 `file` 确认）、zip 与 pkg 产物、打包版 SMOKE 冒烟（dev 模式 + packaged 模式）均验证通过；pkg 走 pkgbuild 无需挂载，可在受限环境生成；dmg 生成依赖 hdiutil 挂载，受本机受限 shell 环境禁止挂载的限制未能在本地跑通（手动 hdiutil 同参数同样被拒），在 GitHub macOS runner 上不受影响。
