@@ -1,6 +1,6 @@
 {
   "name": "ac-ledger",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "private": true,
   "description": "Ac记账 — 支持桌面端与 Web 端的记账软件，数据存储在 GitHub 仓库 / WebDAV",
   "type": "module",

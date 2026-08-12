@@ -9,6 +9,11 @@ import App from './App';
 
 dayjs.locale('zh-cn');
 
+// macOS 桌面端：标记平台类名，CSS 据此为原生交通灯留出空间、调整标题栏布局
+if (window.acLedgerDesktop?.platform === 'darwin') {
+  document.body.classList.add('platform-darwin');
+}
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <ConfigProvider

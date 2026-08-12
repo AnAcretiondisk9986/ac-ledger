@@ -48,7 +48,9 @@ function Shell() {
   const sourceLabel = config?.kind === 'github' ? 'GitHub' : config?.kind === 'webdav' ? 'WebDAV' : '本机';
 
   // 双击标题栏空白处切换最大化/还原（no-drag 区域内不触发）
+  // macOS：hiddenInset 标题栏双击缩放由系统处理，这里跳过避免双重触发互相抵消
   const handleHeaderDoubleClick = (e: React.MouseEvent) => {
+    if (window.acLedgerDesktop?.platform === 'darwin') return;
     if ((e.target as HTMLElement).closest('.app-region-no-drag')) return;
     window.acLedgerDesktop?.windowControls?.toggleMaximize();
   };

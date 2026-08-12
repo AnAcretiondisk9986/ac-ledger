@@ -297,3 +297,23 @@ ELECTRON_BUILDER_BINARIES_MIRROR="https://npmmirror.com/mirrors/electron-builder
 > 请阅读 `HANDOFF.md` 了解 AcLedger 项目全貌。当前任务是：______。
 > 注意：本机 github.com 直连不通需走 127.0.0.1:7890 代理；npm 11 需 approve-scripts；
 > 桌面版改动后必须重新打包并覆盖安装目录 + 桌面副本；隐私数据不得进公开仓库。
+
+---
+
+## 11. macOS 适配（2026-08-13）
+
+在 macOS（Intel/Apple Silicon）上完整运行与打包桌面版。核心存储/解析层本就跨平台（纯 TS + node:fs，GBK 走 TextDecoder），改动集中在 Electron 壳与打包链路：
+
+- **main.cjs**：
+  - 硬件加速仅 win32 禁用（macOS 保留，OCR WASM 与渲染性能更好）
+  - 窗口：macOS 用 `titleBarStyle: hiddenInset` + `trafficLightPosition`（保留原生交通灯），Windows/Linux 保持 `frame: false`
+  - 关闭语义：macOS 点红点仅关窗口（应用常驻 Dock，`activate` 重建）；Cmd+Q/菜单退出（`before-quit` → `quitRequested`）才触发退出同步；同步失败弹窗选「取消」时复位 `quitRequested`（避免下次点红点误判为退出）
+  - macOS 中文应用菜单（App/编辑/视图/窗口 role），保证 Cmd+C/V/Q 可用；视图菜单不放 zoom（应用禁用页面缩放）
+  - 快捷键：DevTools = F12 + Ctrl+Shift+I（Win）/ Cmd+Option+I（mac）；页面缩放拦截键按平台（Win: Ctrl，mac: Cmd）
+- **渲染进程**：`WindowControls` 在 darwin 下返回 null（用原生交通灯）；`main.tsx` 给 body 加 `platform-darwin` 类；`App.tsx` 标题栏双击在 darwin 交给系统（hiddenInset 双击系统 zoom，避免双重触发抵消）；`global.css` 为交通灯留白（`.platform-darwin .brand { padding-top: 44px }`、`.platform-darwin .setup-titlebar { padding-left: 84px }`）
+- **打包**：新增 `assets/icon.icns`（由 icon.png 经 sips+iconutil 生成）；`build.mac` 目标 dmg+zip（**universal**，Intel/Apple Silicon 通用）、`dmg.title`；脚本 `dist` 改为按当前平台（`electron-builder` 不带目标参数），新增 `dist:win`/`dist:mac`；`pack:dir` 不变
+- **CI**：release.yml 改矩阵（windows-latest + macos-latest），各自 `--win`/`--mac` 打包并上传 exe / dmg+zip；`CSC_IDENTITY_AUTO_DISCOVERY=false` 跳过 mac 签名（未签名产物 Gatekeeper 需右键打开，README 已说明）
+
+macOS 验证命令：`npm run dev -w @ac-ledger/desktop`（开发）、`SMOKE_TEST=1 npx electron .`（冒烟）、`npm run dist:mac -w @ac-ledger/desktop`（dmg/zip）、`npx electron-builder --mac --dir`（快速目录版）。macOS 打包用系统 hdiutil，无需 ELECTRON_BUILDER_BINARIES_MIRROR；electron 二进制仍走 npmmirror。
+
+> 本机验证备注（macOS）：universal 目录版（x86_64+arm64 双架构已用 `file` 确认）与 zip 产物、打包版 SMOKE 冒烟（dev 模式 + packaged 模式）均验证通过；dmg 生成依赖 hdiutil 挂载，受本机受限 shell 环境禁止挂载的限制未能在本地跑通（手动 hdiutil 同参数同样被拒），在 GitHub macOS runner 上不受影响。

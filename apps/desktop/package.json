@@ -1,6 +1,6 @@
 {
   "name": "@ac-ledger/desktop",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "private": true,
   "description": "Ac记账 桌面壳（Electron）",
   "author": "AcLedger",
@@ -10,7 +10,9 @@
     "start": "electron .",
     "smoke": "cross-env SMOKE_TEST=1 electron .",
     "prepare:app": "node scripts/prepare-app.cjs",
-    "dist": "npm run build -w @ac-ledger/web && node scripts/prepare-app.cjs && electron-builder --win",
+    "dist": "npm run build -w @ac-ledger/web && node scripts/prepare-app.cjs && electron-builder",
+    "dist:win": "npm run build -w @ac-ledger/web && node scripts/prepare-app.cjs && electron-builder --win",
+    "dist:mac": "npm run build -w @ac-ledger/web && node scripts/prepare-app.cjs && electron-builder --mac",
     "pack:dir": "npm run build -w @ac-ledger/web && node scripts/prepare-app.cjs && electron-builder --dir"
   },
   "build": {
@@ -45,6 +47,27 @@
           ]
         }
       ]
+    },
+    "mac": {
+      "icon": "assets/icon.icns",
+      "category": "public.app-category.finance",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "universal"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "universal"
+          ]
+        }
+      ]
+    },
+    "dmg": {
+      "title": "Ac记账 ${version}"
     },
     "nsis": {
       "oneClick": false,

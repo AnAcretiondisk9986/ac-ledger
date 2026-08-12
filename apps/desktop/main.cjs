@@ -9,8 +9,13 @@ const fs = require('node:fs');
 const { registerFsIpc } = require('./fs-ipc.cjs');
 const { registerWebDAVIpc } = require('./webdav-ipc.cjs');
 
-// 禁用硬件加速：规避 Windows 上 GPU 进程崩溃导致的纯白窗口（常见于驱动/远程桌面/虚拟机环境）
-app.disableHardwareAcceleration();
+// 仅 Windows 禁用硬件加速：规避 GPU 进程崩溃导致的纯白窗口（常见于驱动/远程桌面/虚拟机环境）。
+// macOS 保留硬件加速（WASM OCR 与界面渲染性能更好，也更省电）。
+if (process.platform === 'win32') {
+  app.disableHardwareAcceleration();
+}
+
+const IS_MAC = process.platform === 'darwin';
 
 const DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL || 'http://localhost:5173';
 const WEB_DIST = path.join(__dirname, 'renderer', 'index.html');
@@ -84,6 +89,34 @@ function registerWindowIpc() {
 
 let mainWindow = null;
 
+// macOS 区分「点红点关窗口」与「退出应用（Cmd+Q）」：
+// 仅真正退出时才触发退出同步（点红点后应用常驻 Dock，数据在本地副本中，下次打开自动补交）
+let quitRequested = false;
+// 红点关窗时若 syncEnabled 为 true（GitHub 双线模式），记下待处理标志：
+// 之后无窗口 Cmd+Q 退出时没有窗口可拦截 close 执行同步，在 before-quit 兜底询问
+let quitSyncSkipped = false;
+app.on('before-quit', (event) => {
+  quitRequested = true;
+  log('before-quit');
+  if (IS_MAC && quitSyncSkipped && syncEnabled && BrowserWindow.getAllWindows().length === 0) {
+    quitSyncSkipped = false;
+    const choice = dialog.showMessageBoxSync({
+      type: 'warning',
+      title: '退出前未能提交',
+      message: '存在可能未提交到 GitHub 仓库的更改',
+      detail: '窗口已关闭，无法在退出前执行提交。本地副本已保存，下次打开会自动补交。',
+      buttons: ['仍然退出', '取消'],
+      defaultId: 0,
+      cancelId: 1,
+      noLink: true,
+    });
+    if (choice === 1) {
+      quitRequested = false;
+      event.preventDefault();
+    }
+  }
+});
+
 // —— GitHub 双线存储：退出时自动提交（渲染进程执行同步，主进程拦截 close 并等待结果） ——
 let syncEnabled = false; // 渲染进程告知当前是否需要退出同步（仅桌面版 GitHub 模式为 true）
 let syncInFlight = false;
@@ -131,8 +164,10 @@ async function showSyncError(detail) {
     armSyncTimeout();
   } else if (response === 1) {
     app.exit(0); // 强制退出：本地副本保留，下次打开时 syncAll 会补交
+  } else {
+    // 取消退出：复位标志，避免下次点红点关窗口被误判为退出
+    quitRequested = false;
   }
-  // response === 2：取消退出，窗口保持
 }
 
 function armSyncTimeout() {
@@ -152,6 +187,62 @@ function beginQuitSync(win) {
   armSyncTimeout();
 }
 
+/**
+ * macOS 应用菜单：Cmd+C/V/Q 等系统快捷键依赖菜单存在，同时替换默认 Electron 英文菜单。
+ * 注意：视图菜单不放 zoomIn/zoomOut —— 应用禁用了页面缩放（保持桌面观感）。
+ */
+function installMacMenu() {
+  const template = [
+    {
+      label: app.name,
+      submenu: [
+        { role: 'about', label: '关于 Ac记账' },
+        { type: 'separator' },
+        { role: 'services', label: '服务' },
+        { type: 'separator' },
+        { role: 'hide', label: '隐藏 Ac记账' },
+        { role: 'hideOthers', label: '隐藏其他' },
+        { role: 'unhide', label: '全部显示' },
+        { type: 'separator' },
+        { role: 'quit', label: '退出 Ac记账' },
+      ],
+    },
+    {
+      label: '编辑',
+      submenu: [
+        { role: 'undo', label: '撤销' },
+        { role: 'redo', label: '重做' },
+        { type: 'separator' },
+        { role: 'cut', label: '剪切' },
+        { role: 'copy', label: '拷贝' },
+        { role: 'paste', label: '粘贴' },
+        { role: 'selectAll', label: '全选' },
+      ],
+    },
+    {
+      label: '视图',
+      submenu: [
+        { role: 'reload', label: '重新加载' },
+        { role: 'forceReload', label: '强制重新加载' },
+        { role: 'toggleDevTools', label: '开发者工具' },
+        { type: 'separator' },
+        { role: 'togglefullscreen', label: '切换全屏' },
+      ],
+    },
+    {
+      label: '窗口',
+      submenu: [
+        { role: 'minimize', label: '最小化' },
+        { role: 'zoom', label: '缩放' },
+        { role: 'close', label: '关闭窗口' },
+        { type: 'separator' },
+        { role: 'front', label: '前置全部窗口' },
+      ],
+    },
+  ];
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1280,
@@ -159,7 +250,11 @@ function createWindow() {
     minWidth: 960,
     minHeight: 600,
     title: 'Ac记账',
-    frame: false, // 隐藏系统标题栏（ControlBox），窗口控制按钮自绘在界面内
+    // Windows/Linux：隐藏系统标题栏（ControlBox），窗口控制按钮自绘在界面内
+    // macOS：保留原生交通灯（红黄绿），标题栏隐藏但可拖拽（trafficLightPosition 在侧栏顶部留白区）
+    ...(IS_MAC
+      ? { titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 16, y: 15 } }
+      : { frame: false }),
     backgroundColor: '#f5f5f5',
     show: false,
     webPreferences: {
@@ -181,16 +276,24 @@ function createWindow() {
   // 禁用页面缩放（Ctrl+滚轮 / 触控板捏合），保持桌面应用观感
   win.webContents.setVisualZoomLevelLimits(1, 1);
 
-  // 点击窗口关闭按钮（ControlBox X）→ 需要退出同步时先提交，成功后才真正退出
+  // 关闭窗口语义：
+  // - Windows/Linux：关闭 = 退出应用；需要退出同步时先提交，成功后才真正退出
+  // - macOS：点红点仅关窗口（应用常驻 Dock，activate 时重建）；Cmd+Q / 菜单退出（before-quit）才走退出同步
   win.on('close', (e) => {
-    log('window close: checking sync');
-    if (syncEnabled && !syncInFlight) {
+    log(`window close: checking sync (quitRequested=${quitRequested})`);
+    const shouldQuit = !IS_MAC || quitRequested;
+    if (shouldQuit && syncEnabled && !syncInFlight) {
       e.preventDefault();
       beginQuitSync(win);
       return;
     }
-    log('window close: quitting app');
-    app.quit();
+    if (shouldQuit) {
+      log('window close: quitting app');
+      app.quit();
+    } else {
+      log('window close: closing window only, app stays alive (macOS)');
+      if (syncEnabled) quitSyncSkipped = true;
+    }
   });
 
   // 页面就绪后再显示窗口，避免白屏闪烁
@@ -199,15 +302,20 @@ function createWindow() {
     win.show();
   });
 
-  // Ctrl+Shift+I / F12 打开开发者工具（排查问题时用）
+  // 打开开发者工具：F12 通用；Windows/Linux 另支持 Ctrl+Shift+I；macOS 另支持 Cmd+Option+I
   win.webContents.on('before-input-event', (_e, input) => {
     if (input.type !== 'keyDown') return;
-    if (input.key === 'F12' || (input.key === 'I' && input.control && input.shift)) {
+    const devToolsKey =
+      input.key === 'F12' ||
+      (input.key === 'I' && input.control && input.shift) ||
+      (IS_MAC && input.key === 'I' && input.meta && input.alt);
+    if (devToolsKey) {
       win.webContents.toggleDevTools();
       log('devtools toggled');
     }
-    // 禁用页面缩放快捷键（Ctrl+= / Ctrl+- / Ctrl+0），避免"网页感"
-    if (input.control && ['=', '+', '-', '0'].includes(input.key)) {
+    // 禁用页面缩放快捷键（Windows/Linux: Ctrl；macOS: Cmd），避免"网页感"
+    const zoomModifier = IS_MAC ? input.meta : input.control;
+    if (zoomModifier && ['=', '+', '-', '0'].includes(input.key)) {
       log(`zoom shortcut blocked: ${input.key}`);
     }
   });
@@ -320,8 +428,12 @@ if (!gotLock) {
   });
 
   app.whenReady().then(() => {
-    // Windows 上移除默认应用菜单栏（File/Edit/View...），更像原生桌面应用
-    if (process.platform === 'win32') Menu.setApplicationMenu(null);
+    // 菜单：Windows 移除默认菜单栏（更像原生桌面应用）；macOS 安装中文应用菜单（系统快捷键依赖）
+    if (process.platform === 'win32') {
+      Menu.setApplicationMenu(null);
+    } else if (IS_MAC) {
+      installMacMenu();
+    }
     registerFsIpc();
     registerWebDAVIpc();
     registerShellIpc();

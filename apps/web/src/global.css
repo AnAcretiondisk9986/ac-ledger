@@ -56,6 +56,15 @@ a,
 .app-region-drag { -webkit-app-region: drag; }
 .app-region-no-drag { -webkit-app-region: no-drag; }
 
+/* macOS 桌面端：侧栏品牌区顶部为原生交通灯留白（trafficLightPosition 约 x:16 y:15，直径 12px） */
+.platform-darwin .brand {
+  padding-top: 44px;
+}
+/* macOS 桌面端：隐藏自绘窗口按钮后，设置页顶部条无需再为按钮留位，但左侧避开交通灯 */
+.platform-darwin .setup-titlebar {
+  padding-left: 84px;
+}
+
 .app-shell {
   height: 100vh;
   overflow: hidden;

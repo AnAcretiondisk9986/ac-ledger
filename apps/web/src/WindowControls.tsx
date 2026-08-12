@@ -27,14 +27,17 @@ const svg = {
 /** 自绘窗口控制按钮（仅桌面端无边框窗口显示）：最小化 / 最大化(还原) / 关闭 */
 export default function WindowControls({ flushRight = false }: { flushRight?: boolean }) {
   const controls = window.acLedgerDesktop?.windowControls;
+
+  // macOS 使用原生交通灯（titleBarStyle: hiddenInset），不显示自绘按钮
+  const isMac = window.acLedgerDesktop?.platform === 'darwin';
   const [maximized, setMaximized] = useState(false);
 
   useEffect(() => {
-    if (!controls) return;
+    if (!controls || isMac) return;
     return controls.onMaximizedChange(setMaximized);
-  }, [controls]);
+  }, [controls, isMac]);
 
-  if (!controls) return null;
+  if (!controls || isMac) return null;
 
   return (
     <div

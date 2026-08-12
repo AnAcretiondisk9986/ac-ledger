@@ -16,7 +16,24 @@ permissions:
 
 jobs:
   build:
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            builder_args: --win
+            artifacts: |
+              apps/desktop/release/*.exe
+              apps/desktop/release/*.blockmap
+              apps/desktop/release/latest*.yml
+          - os: macos-latest
+            builder_args: --mac
+            artifacts: |
+              apps/desktop/release/*.dmg
+              apps/desktop/release/*.zip
+              apps/desktop/release/*.blockmap
+              apps/desktop/release/latest-mac.yml
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
@@ -45,21 +62,20 @@ jobs:
           fi
           echo "version=${ver}" >> "$GITHUB_OUTPUT"
 
-      - name: 打包桌面版（NSIS + 便携版）
+      - name: 打包桌面版（${{ matrix.os }}）
         working-directory: apps/desktop
         env:
           AC_LEDGER_VERSION: ${{ steps.version.outputs.version }}
+          # 无签名证书环境跳过 macOS 代码签名（未签名产物本地可运行，Gatekeeper 需右键打开）
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
         run: |
           node scripts/prepare-app.cjs
-          npx electron-builder --win
+          npx electron-builder ${{ matrix.builder_args }}
 
       - name: 上传产物到 Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event.inputs.version != '' && format('v{0}', github.event.inputs.version) || github.ref_name }}
           draft: true
-          files: |
-            apps/desktop/release/*.exe
-            apps/desktop/release/*.blockmap
-            apps/desktop/release/*.yml
+          files: ${{ matrix.artifacts }}
           fail_on_unmatched_files: false

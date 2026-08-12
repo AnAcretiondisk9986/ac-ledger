@@ -66,19 +66,26 @@ Web 版保持实时直连 GitHub（浏览器无本地目录）。
 
 ### 无边框窗口
 
-桌面版隐藏系统标题栏（`frame: false`），窗口控制（最小化/最大化/关闭）自绘到界面顶部拖拽区，通过 `windowControls` IPC 桥控制主进程窗口；顶部区域可拖拽移动窗口。
+- **Windows/Linux**：隐藏系统标题栏（`frame: false`），窗口控制（最小化/最大化/关闭）自绘到界面顶部拖拽区，通过 `windowControls` IPC 桥控制主进程窗口；顶部区域可拖拽移动窗口，双击切换最大化。
+- **macOS**：使用 `titleBarStyle: hiddenInset` 保留原生交通灯（红黄绿）与系统双击缩放，不显示自绘按钮；点红点仅关闭窗口（应用常驻 Dock，点击 Dock 图标重建窗口），Cmd+Q / 菜单退出才触发「退出时提交 GitHub 同步」；应用菜单为中文（App/编辑/视图/窗口），Cmd+C/V 等系统快捷键可用，开发者工具快捷键为 Cmd+Option+I（F12 亦可用）。
 
 ### 打包安装包（electron-builder）
 
 ```bash
-npm run dist -w @ac-ledger/desktop   # 产出 release/：安装包 Setup + 便携版 + win-unpacked
+npm run dist -w @ac-ledger/desktop    # 按当前平台打包（Windows → NSIS+便携版；macOS → dmg+zip）
+npm run dist:win -w @ac-ledger/desktop
+npm run dist:mac -w @ac-ledger/desktop
 ```
 
-产物：`release/Ac记账 Setup <版本>.exe`（NSIS 安装包）、`release/Ac记账 <版本>.exe`（便携版）、`release/win-unpacked/`（目录版）。版本号来自 git tag（如 `v0.2.1` → `0.2.1`），CI 与本地打包均自动解析。
+产物：
+- Windows：`release/Ac记账 Setup <版本>.exe`（NSIS 安装包）、`release/Ac记账 <版本>.exe`（便携版）、`release/win-unpacked/`（目录版）
+- macOS：`release/Ac记账-<版本>-universal.dmg`（安装镜像，Intel + Apple Silicon 通用）、`release/Ac记账-<版本>-universal-mac.zip`、`release/mac-universal/`（目录版）。macOS 版未做代码签名/公证，首次打开请右键应用 → 「打开」（或 `xattr -dr com.apple.quarantine /Applications/Ac记账.app`）；CI 在 macOS runner 上同时产出 dmg/zip。
+
+版本号来自 git tag（如 `v0.2.1` → `0.2.1`），CI 与本地打包均自动解析。
 
 注意（网络镜像，本机已验证）：
-- electron 二进制下载走 `electronDownload.mirror = https://npmmirror.com/mirrors/electron/`（已固化在 build 配置）
-- electron-builder 工具（winCodeSign/nsis）走 `ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/`（打包命令需带该环境变量）
+- electron 二进制下载走 `electronDownload.mirror = https://npmmirror.com/mirrors/electron/`（已固化在 build 配置，Windows/macOS 通用）
+- electron-builder 工具（winCodeSign/nsis）走 `ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/`（Windows 打包命令需带该环境变量；macOS 打包用系统 hdiutil 无需下载）
 - 打包使用独立 `app/` 目录（`scripts/prepare-app.cjs` 构建），避免 electron-builder 在 npm workspace 内跑 `npm install` 破坏依赖树
 
 ## Web 端
