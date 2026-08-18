@@ -44,14 +44,31 @@ export class LocalAdapter implements StorageAdapter {
   }
 
   async listFiles(prefix = ''): Promise<{ path: string; sha?: string; size?: number; mtimeMs?: number }[]> {
-    const dir = this.resolve(prefix || '.');
-    const items = await this.ops.listFiles(dir);
-    return items.map((f) => ({
-      path: f.name,
-      size: f.size,
-      mtimeMs: f.mtimeMs,
-      // 无版本概念；用 size+mtime 不参与乐观锁，本地单进程写入无需冲突控制
-    }));
+    const cleanPrefix = prefix.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+    const root = this.resolve(cleanPrefix || '.');
+    const result: { path: string; sha?: string; size?: number; mtimeMs?: number }[] = [];
+
+    // FileSystemOps 只列一层；这里递归展开目录，保证适配器契约中的
+    // listFiles(prefix) 对 transactions/YYYY-MM.json 等嵌套文件成立。
+    const walk = async (absDir: string, relativeDir: string): Promise<void> => {
+      const items = await this.ops.listFiles(absDir);
+      for (const item of items) {
+        const relativePath = relativeDir ? `${relativeDir}/${item.name}` : item.name;
+        if (item.isDirectory) {
+          await walk(`${absDir.replace(/\/+$/, '')}/${item.name}`, relativePath);
+          continue;
+        }
+        result.push({
+          path: relativePath,
+          size: item.size,
+          mtimeMs: item.mtimeMs,
+          // 无版本概念；用 size+mtime 不参与乐观锁，本地单进程写入无需冲突控制
+        });
+      }
+    };
+
+    await walk(root, '');
+    return result;
   }
 
   async deleteFile(path: string, _opts?: WriteOptions): Promise<void> {

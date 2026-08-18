@@ -30,12 +30,14 @@ function isTransactionFile(path: string): boolean {
   return path.startsWith('transactions/') && path.endsWith('.json');
 }
 
-function parseTransactions(content: string): Transaction[] {
+function parseTransactions(content: string, label: string): Transaction[] {
   try {
     const file = JSON.parse(content) as TransactionsFile;
-    return Array.isArray(file.transactions) ? file.transactions : [];
-  } catch {
-    return [];
+    if (!Array.isArray(file.transactions)) throw new Error('缺少 transactions 数组');
+    return file.transactions;
+  } catch (e) {
+    const detail = e instanceof Error ? e.message : String(e);
+    throw new Error(`交易文件损坏，已停止同步以避免数据被覆盖: ${label}（${detail}）`);
   }
 }
 
@@ -65,13 +67,24 @@ export class LedgerSync {
     private readonly remoteDates: Map<string, number> = new Map()
   ) {}
 
-  private async localFiles(): Promise<LocalFile[]> {
+  private async localFiles(fallbackPaths: Iterable<string> = []): Promise<LocalFile[]> {
     const items = await this.local.listFiles('');
     const out: LocalFile[] = [];
+    const seen = new Set<string>();
     for (const it of items) {
       const content = await this.local.readFile(it.path);
       if (content === null) continue;
       out.push({ path: it.path, content, sha: await blobSha(content), mtimeMs: it.mtimeMs });
+      seen.add(it.path);
+    }
+    // 防御性探测：即使某个适配器错误地漏报嵌套文件，也不能据此直接
+    // 用远端版本覆盖本地。远端已知路径逐个 read 一次，找回漏报项。
+    for (const path of fallbackPaths) {
+      if (seen.has(path)) continue;
+      const content = await this.local.readFile(path);
+      if (content === null) continue;
+      out.push({ path, content, sha: await blobSha(content) });
+      seen.add(path);
     }
     return out;
   }
@@ -83,12 +96,14 @@ export class LedgerSync {
       summary.failed.push({ path, error: '远端文件已不存在' });
       return;
     }
+    if (isTransactionFile(path)) parseTransactions(content, `远端 ${path}`);
     await this.local.writeFile(path, content);
     summary.pulled.push(path);
   }
 
   /** 上传本地文件到远端（带远端 sha 乐观锁） */
   private async push(path: string, content: string, remoteSha: string | undefined, summary: SyncSummary): Promise<void> {
+    if (isTransactionFile(path)) parseTransactions(content, `本地 ${path}`);
     await this.remote.writeFile(path, content, remoteSha ? { expectedSha: remoteSha } : undefined);
     summary.pushed.push(path);
   }
@@ -102,7 +117,10 @@ export class LedgerSync {
       return;
     }
     const month = path.slice('transactions/'.length, -'.json'.length);
-    const merged = mergeTransactions(parseTransactions(localContent), parseTransactions(remoteContent));
+    const merged = mergeTransactions(
+      parseTransactions(localContent, `本地 ${path}`),
+      parseTransactions(remoteContent, `远端 ${path}`)
+    );
     const mergedJson = serializeTransactions(month, merged);
     await this.local.writeFile(path, mergedJson);
     await this.remote.writeFile(path, mergedJson, { expectedSha: remoteSha });
@@ -114,7 +132,7 @@ export class LedgerSync {
     const summary: SyncSummary = { pushed: [], pulled: [], merged: [], failed: [] };
     const remoteItems = await this.remote.listFiles('');
     const remoteMap = new Map(remoteItems.map((f) => [f.path, f.sha]));
-    const locals = await this.localFiles();
+    const locals = await this.localFiles(remoteMap.keys());
     const localMap = new Map(locals.map((f) => [f.path, f]));
 
     const allPaths = new Set<string>([...remoteMap.keys(), ...localMap.keys()]);
@@ -133,7 +151,7 @@ export class LedgerSync {
             // 配置/其他文件：取较新版本（远端最后提交时间 vs 本地修改时间）
             const remoteDate = this.remoteDates.get(path);
             const localMtime = local.mtimeMs ?? 0;
-            const remoteNewer = remoteDate !== undefined && remoteDate > localMtime;
+            const remoteNewer = remoteDate !== undefined && local.mtimeMs !== undefined && remoteDate > localMtime;
             if (remoteNewer) await this.pull(path, summary);
             else await this.push(path, local.content, remoteSha, summary);
           }
@@ -151,7 +169,7 @@ export class LedgerSync {
     const summary: SyncSummary = { pushed: [], pulled: [], merged: [], failed: [] };
     const remoteItems = await this.remote.listFiles('');
     const remoteMap = new Map(remoteItems.map((f) => [f.path, f.sha]));
-    const locals = await this.localFiles();
+    const locals = await this.localFiles(remoteMap.keys());
 
     for (const local of locals) {
       const remoteSha = remoteMap.get(local.path);

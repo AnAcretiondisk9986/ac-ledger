@@ -30,7 +30,7 @@ declare global {
         rootDir(slug: string): Promise<string>;
         readFile(slug: string, rel: string): Promise<string | null>;
         writeFile(slug: string, rel: string, content: string): Promise<void>;
-        listFiles(slug: string, rel: string): Promise<{ name: string; size?: number; mtimeMs?: number }[]>;
+        listFiles(slug: string, rel: string): Promise<{ name: string; isDirectory?: boolean; size?: number; mtimeMs?: number }[]>;
         deleteFile(slug: string, rel: string): Promise<void>;
       };
       /** 退出同步桥：关闭窗口前提交 GitHub，成功后才退出 */

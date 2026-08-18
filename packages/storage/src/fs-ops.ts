@@ -4,8 +4,8 @@
 export interface FileSystemOps {
   readFile(absPath: string): Promise<string | null>;
   writeFile(absPath: string, content: string): Promise<void>;
-  /** 列出目录内的条目（不含子目录递归） */
-  listFiles(absDir: string): Promise<{ name: string; size?: number; mtimeMs?: number }[]>;
+  /** 列出目录内的条目（单层；目录条目用于由 LocalAdapter 递归遍历） */
+  listFiles(absDir: string): Promise<{ name: string; isDirectory?: boolean; size?: number; mtimeMs?: number }[]>;
   deleteFile(absPath: string): Promise<void>;
   /** 目录可写检查 */
   testConnection(absDir: string): Promise<void>;

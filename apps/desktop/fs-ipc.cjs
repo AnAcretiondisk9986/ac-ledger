@@ -146,6 +146,10 @@ async function listDir(abs) {
   });
   const result = [];
   for (const e of entries) {
+    if (e.isDirectory()) {
+      result.push({ name: e.name, isDirectory: true });
+      continue;
+    }
     if (!e.isFile()) continue;
     const stat = await fsp.stat(path.join(abs, e.name));
     result.push({ name: e.name, size: stat.size, mtimeMs: stat.mtimeMs });

@@ -39,6 +39,10 @@ describe('LocalAdapter', () => {
     await adapter.writeFile('transactions/2026-08.json', '[]');
     const files = await adapter.listFiles('transactions');
     expect(files).toEqual([{ path: '2026-08.json', size: 2, mtimeMs: expect.any(Number) }]);
+    expect((await adapter.listFiles()).map((file) => file.path).sort()).toEqual([
+      'ledger.json',
+      'transactions/2026-08.json',
+    ]);
 
     await adapter.deleteFile('ledger.json');
     expect(await adapter.readFile('ledger.json')).toBeNull();

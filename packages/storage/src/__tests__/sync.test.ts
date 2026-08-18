@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { MemoryAdapter } from '../memory.js';
+import { createNodeLocalAdapter } from '../local-node.js';
 import { LedgerSync } from '../sync.js';
 
 const TX_FILE = 'transactions/2026-08.json';
@@ -66,6 +70,72 @@ describe('LedgerSync', () => {
     expect(content).toContain('"id": "l1"');
     expect(content).toContain('"id": "r1"');
     expect(await local.readFile(TX_FILE)).toBe(content);
+  });
+
+  it('真实本地目录：启动合并且退出上传嵌套的交易文件', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ac-ledger-sync-test-'));
+    try {
+      const remote = await filled({
+        [TX_FILE]: txFile([{ id: 'remote', date: '2026-08-01T10:00:00+08:00', amount: 1 }]),
+      });
+      const local = createNodeLocalAdapter(dir);
+      await local.writeFile(
+        TX_FILE,
+        txFile([{ id: 'local', date: '2026-08-02T10:00:00+08:00', amount: 2 }])
+      );
+
+      const startup = await new LedgerSync(remote, local).syncAll();
+      expect(startup.merged).toEqual([TX_FILE]);
+      expect(startup.pulled).toEqual([]);
+      const afterStartup = await local.readFile(TX_FILE);
+      expect(afterStartup).toContain('"id": "remote"');
+      expect(afterStartup).toContain('"id": "local"');
+
+      const localFile = JSON.parse(afterStartup!) as { transactions: unknown[] };
+      await local.writeFile(
+        TX_FILE,
+        txFile([
+          ...localFile.transactions,
+          { id: 'local-after-start', date: '2026-08-03T10:00:00+08:00', amount: 3 },
+        ])
+      );
+
+      const shutdown = await new LedgerSync(remote, local).pushAll();
+      expect(shutdown.merged).toEqual([TX_FILE]);
+      expect(await remote.readFile(TX_FILE)).toContain('"id": "local-after-start"');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('适配器漏报嵌套文件时二次探测，禁止远端直接覆盖本地', async () => {
+    const remote = await filled({
+      [TX_FILE]: txFile([{ id: 'remote', date: '2026-08-01T10:00:00+08:00', amount: 1 }]),
+    });
+    const local = await filled({
+      [TX_FILE]: txFile([{ id: 'local', date: '2026-08-02T10:00:00+08:00', amount: 2 }]),
+    });
+    local.listFiles = async () => [];
+
+    const result = await new LedgerSync(remote, local).syncAll();
+    expect(result.merged).toEqual([TX_FILE]);
+    expect(result.pulled).toEqual([]);
+    expect(await local.readFile(TX_FILE)).toContain('"id": "local"');
+    expect(await remote.readFile(TX_FILE)).toContain('"id": "local"');
+  });
+
+  it('交易文件损坏时保留本地现场，不用远端版本覆盖', async () => {
+    const remote = await filled({
+      [TX_FILE]: txFile([{ id: 'remote', date: '2026-08-01T10:00:00+08:00', amount: 1 }]),
+    });
+    const local = await filled({ [TX_FILE]: '{broken json' });
+
+    const result = await new LedgerSync(remote, local).syncAll();
+    expect(result.failed).toHaveLength(1);
+    expect(result.failed[0]?.path).toBe(TX_FILE);
+    expect(result.failed[0]?.error).toContain('已停止同步以避免数据被覆盖');
+    expect(await local.readFile(TX_FILE)).toBe('{broken json');
+    expect(await remote.readFile(TX_FILE)).toContain('"id": "remote"');
   });
 
   it('syncAll：配置取较新（远端提交时间晚 → 下载；本地晚 → 上传）', async () => {
